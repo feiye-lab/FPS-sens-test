@@ -2789,7 +2789,8 @@ function showABResults(R){
   <div class="row">
     <button class="btn" id="btnAgain">再测一次</button>
     <button class="btn gh" id="btnBack">返回设置</button>
-    <button class="btn gh" id="btnExport">导出 JSON</button>
+    <button class="btn" id="btnExport">保存成绩单</button>
+    <button class="btn gh" id="btnRaw">原始数据</button>
   </div>
   <p style="color:var(--dim2);font-size:12px;margin-top:22px">
     比较的是<b style="color:var(--dim)">即时表现</b>，不预测长期适应后的上限。差异不显著时最稳妥的做法是别换。</p>`;
@@ -2799,13 +2800,7 @@ function showABResults(R){
     .then(()=>{ cp.textContent='已复制'; setTimeout(()=>cp.textContent='复制',1400); }).catch(()=>{});
   $('btnAgain').onclick = ()=>{ el.classList.add('hidden'); beginTest(); };
   $('btnBack').onclick  = ()=>{ el.classList.add('hidden'); $('screenSetup').classList.remove('hidden'); renderHistory(); window.scrollTo(0,0); };
-  $('btnExport').onclick = ()=>{
-    const b = new Blob([JSON.stringify(R,null,2)],{type:'application/json'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(b);
-    a.download = `${(R.cfg&&R.cfg.game&&GAMES[R.cfg.game]?GAMES[R.cfg.game]:G).filePrefix}-ab-${(R.cfg&&R.cfg.who?R.cfg.who.replace(/[^\w一-龥-]/g,'')+'-':'')}${new Date(R.ts).toISOString().slice(0,16).replace(/[:T]/g,'')}.json`;
-    a.click(); URL.revokeObjectURL(a.href);
-  };
+  bindResultExport(R);
   window.scrollTo(0,0);
 }
 
@@ -2911,20 +2906,15 @@ function showSweepResults(R){
   <div class="row">
     <button class="btn" id="btnAgain">再测一次</button>
     <button class="btn gh" id="btnBack">返回设置</button>
-    <button class="btn gh" id="btnExport">导出 JSON</button>
+    <button class="btn" id="btnExport">保存成绩单</button>
+    <button class="btn gh" id="btnRaw">原始数据</button>
   </div>`;
 
   $('btnCopy').onclick = ()=>navigator.clipboard.writeText($('cmdTxt').textContent)
     .then(()=>{ $('btnCopy').textContent='已复制'; setTimeout(()=>$('btnCopy').textContent='复制',1400); }).catch(()=>{});
   $('btnAgain').onclick = ()=>{ el.classList.add('hidden'); beginTest(); };
   $('btnBack').onclick  = ()=>{ el.classList.add('hidden'); $('screenSetup').classList.remove('hidden'); renderHistory(); window.scrollTo(0,0); };
-  $('btnExport').onclick = ()=>{
-    const b = new Blob([JSON.stringify(R,null,2)],{type:'application/json'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(b);
-    a.download = `${(R.cfg&&R.cfg.game&&GAMES[R.cfg.game]?GAMES[R.cfg.game]:G).filePrefix}-newbie-${(R.cfg&&R.cfg.who?R.cfg.who.replace(/[^\w一-龥-]/g,'')+'-':'')}${new Date(R.ts).toISOString().slice(0,16).replace(/[:T]/g,'')}.json`;
-    a.click(); URL.revokeObjectURL(a.href);
-  };
+  bindResultExport(R);
   window.scrollTo(0,0);
 }
 
@@ -3142,7 +3132,8 @@ function showResults(R){
   <div class="row">
     <button class="btn" id="btnAgain">再测一次</button>
     <button class="btn gh" id="btnBack">返回设置</button>
-    <button class="btn gh" id="btnExport">导出 JSON</button>
+    <button class="btn" id="btnExport">保存成绩单</button>
+    <button class="btn gh" id="btnRaw">原始数据</button>
   </div>
   <p style="color:var(--dim2);font-size:12px;margin-top:22px">
     本测试衡量的是<b style="color:var(--dim)">与你肌肉记忆的匹配度</b>，不等于性能最优。浏览器链路比原生游戏长，绝对耗时偏高，但同次测试内部的比较成立。</p>`;
@@ -3154,14 +3145,210 @@ function showResults(R){
   };
   $('btnAgain').onclick = ()=>{ el.classList.add('hidden'); beginTest(); };
   $('btnBack').onclick  = ()=>{ el.classList.add('hidden'); $('screenSetup').classList.remove('hidden'); renderHistory(); window.scrollTo(0,0); };
+  bindResultExport(R);
+  window.scrollTo(0,0);
+}
+
+/* ═══════════ 成绩单（PNG） ═══════════
+   测试人员要把结果发回来，但 JSON 对普通人不友好 —— 打开是一坨括号，
+   看不出自己测得怎么样，也没法直接发群里。这里把结论画成一张图：
+   截图即可分享，微信 QQ 直接发。原始 JSON 仍保留在旁边的小按钮里，排查问题要用。
+   配色跟着**结果所属的那个游戏**走，不是当前界面的游戏 —— 翻历史记录时才不会串。 */
+const CARD_THEME = {
+  cs2:{bg:'#0b1520', panel:'#152436', line:'#24384d', fg:'#e8eef5', dim:'#8fa3b8', acc:'#f5b300'},
+  val:{bg:'#0d1117', panel:'#181d25', line:'#2b323d', fg:'#ece8e1', dim:'#9aa2ad', acc:'#ff4655'}
+};
+const CARD_TONE = {ok:'#3fb950', warn:'#d29922', bad:'#f85149', dim:'#8b98a8'};
+
+/** 一份结果 → 成绩单要画的内容。null 行 = 分隔线。 */
+function cardContent(R){
+  const sum = histSummary(R);
+  const cfg = R.cfg || {};
+  const g   = GAMES[cfg.game] || GAMES.cs2;
+  const rows = [];
+  const add = (k, v) => rows.push([k, String(v)]);
+
+  if (R.mode === 'ab'){
+    add('灵敏度 A', `${R.sensA}　${R.cmA.toFixed(1)} cm/360`);
+    add('灵敏度 B', `${R.sensB}　${R.cmB.toFixed(1)} cm/360`);
+    rows.push(null);
+    const fmt = (v,u) => !isFinite(v) ? '—'
+      : u==='%' ? (v*100).toFixed(0)+'%'
+      : u==='°' ? v.toFixed(2)+'°'
+      : u==='ms' ? Math.round(v)+'ms' : v.toFixed(2);
+    (R.card||[]).forEach(c=>
+      add(c.name, `A ${fmt(c.a,c.unit)}　B ${fmt(c.b,c.unit)}　${c.win ? c.win+' 胜' : '打平'}`));
+    rows.push(null);
+    add('判定方式', '四维记分卡 · Holm 多重比较校正');
+  } else if (R.mode === 'new'){
+    (R.S||[]).forEach((c,i)=>
+      add(`${c.cm.toFixed(0)} cm/360　sens ${c.sens}`,
+          `落点误差 ${c.err.toFixed(2)}°${i===R.bi ? '　★ 最优' : ''}`));
+    rows.push(null);
+    add('推荐区间', R.decisive
+      ? `${R.best.cm.toFixed(0)} cm/360（其余候选都被显著拉开）`
+      : `${R.lo.toFixed(0)}–${R.hi.toFixed(0)} cm/360（区间内无显著差异）`);
+  } else {
+    add('有效甩枪', (R.n||0) + ' 次');
+    add('命中率', ((R.hitRate||0)*100).toFixed(0) + '%');
+    add('甩枪偏差', `${pct(R.bias||0)} ± ${((R.ci95||0)*100).toFixed(1)}%`);
+    if (R.paceEarly) add('开头手速', R.paceEarly.toFixed(0) + ' cm/360');
+    rows.push(null);
+    if (R.track) add('跟枪在靶', (R.track.onTarget*100).toFixed(0) + '%');
+    if (R.hold)  add('微控偏离', R.hold.rms.toFixed(3) + '°');
+    if (R.spray) add('压枪偏离', `${R.spray.rms.toFixed(2)}°　命中 ${(R.spray.hitRate*100).toFixed(0)}%`);
+    if (R.corr2) add('修正次数', R.corr2.corr.toFixed(2) + ' 次');
+    if (R.wave)  add('波次每度耗时', R.wave.msPerDeg.toFixed(1) + ' ms/°');
+    if (R.turnN) add('转身耗时', (R.turnMs/1000).toFixed(2) + ' s');
+  }
+  return {g, sum, rows, cfg};
+}
+
+/** 把长文本按像素宽度折行 */
+function wrapText(g, text, maxW){
+  const out = []; let line = '';
+  for (const ch of String(text)){
+    if (g.measureText(line + ch).width > maxW && line){ out.push(line); line = ch; }
+    else line += ch;
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+function drawScoreCard(R){
+  const {g:GM, sum, rows, cfg} = cardContent(R);
+  const T = CARD_THEME[cfg.game] || CARD_THEME.cs2;
+  const tone = CARD_TONE[sum.tone] || CARD_TONE.dim;
+  const F = '"PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,sans-serif';
+  const M = 'ui-monospace,Consolas,monospace';
+  const W = 880, PAD = 46, DPR = 2;
+
+  // 先用一张临时画布量文字，好算出总高度
+  const probe = document.createElement('canvas').getContext('2d');
+  probe.font = `15px ${F}`;
+  const detail = wrapText(probe, sum.detail || '', W - PAD*2 - 40);
+  const rowH = 48, sepH = 17;
+  const bodyH = rows.reduce((h,r)=> h + (r ? rowH : sepH), 0);
+  const vBoxH = 92 + detail.length*23;
+  const H = 44 + 40 + 30 + 30 + vBoxH + 30 + 84 + 26 + bodyH + 24 + 46;
+
+  const cv = document.createElement('canvas');
+  cv.width = W*DPR; cv.height = Math.round(H)*DPR;
+  const c = cv.getContext('2d');
+  c.scale(DPR, DPR);
+  c.textBaseline = 'top';
+
+  c.fillStyle = T.bg; c.fillRect(0,0,W,H);
+  c.fillStyle = T.acc; c.fillRect(0,0,W,6);          // 顶部主题色条
+
+  let y = 44;
+  c.fillStyle = T.fg; c.font = `600 30px ${F}`;
+  c.fillText(`${GM.name}　${sum.mode}`, PAD, y);
+  y += 40;
+  const who = (cfg.who || '').trim();
+  const d = new Date(R.ts || Date.now());
+  const pad2 = n => String(n).padStart(2,'0');
+  c.fillStyle = T.dim; c.font = `14px ${M}`;
+  c.fillText(`${who ? who + '　·　' : ''}${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`, PAD, y);
+  y += 30 + 30;
+
+  // 结论
+  c.fillStyle = tone + '14';
+  c.strokeStyle = tone + '5a'; c.lineWidth = 1;
+  c.beginPath(); c.roundRect(PAD, y, W-PAD*2, vBoxH, 10); c.fill(); c.stroke();
+  c.fillStyle = tone; c.font = `12px ${M}`;
+  c.fillText('结 论', PAD+24, y+22);
+  c.fillStyle = T.fg; c.font = `600 26px ${F}`;
+  c.fillText(sum.verdict, PAD+24, y+46);
+  c.fillStyle = T.dim; c.font = `15px ${F}`;
+  detail.forEach((ln,i)=> c.fillText(ln, PAD+24, y+86+i*23));
+  y += vBoxH + 30;
+
+  /* 配置条。cm/360 必须用**结果所属游戏**的每计数转角算 ——
+     全局 cm360() 读的是当前界面选中的游戏，翻看另一个游戏的历史记录时会算错
+     （实测：无畏契约 1600dpi/0.19 被当成 CS2 算成 136.7 cm，真值 36.6 cm）。 */
+  const cmOf = (dpi, sens) => (dpi>0 && sens>0) ? 360/(dpi*sens*GM.yaw)*2.54 : 0;
+  const grip = {arm:'手臂流', hybrid:'混合流', wrist:'手腕流'}[cfg.grip] || '—';
+  const cells = R.mode==='ab' ? [
+    ['鼠标 DPI', String(cfg.dpi||'')],
+    ['灵敏度 A / B', `${R.sensA} / ${R.sensB}`],
+    ['cm/360', `${R.cmA.toFixed(0)} / ${R.cmB.toFixed(0)}`],
+    ['胜出', R.winner ? `灵敏度 ${R.winner}` : '打平']
+  ] : R.mode==='new' ? [
+    ['鼠标 DPI', String(cfg.dpi||'')],
+    ['扫描档数', `${(R.S||[]).length} 档`],
+    ['推荐 cm/360', R.decisive ? R.best.cm.toFixed(0) : `${R.lo.toFixed(0)}–${R.hi.toFixed(0)}`],
+    ['握法', grip]
+  ] : [
+    ['鼠标 DPI', String(cfg.dpi||'')],
+    ['游戏内灵敏度', String(cfg.sens||'')],
+    ['cm/360', (R.cmNow || cmOf(cfg.dpi, cfg.sens)).toFixed(1)],
+    ['eDPI', String(Math.round((cfg.dpi||0)*(cfg.sens||0)))]
+  ];
+  const cw = (W-PAD*2)/cells.length;
+  c.fillStyle = T.panel;
+  c.beginPath(); c.roundRect(PAD, y, W-PAD*2, 84, 10); c.fill();
+  cells.forEach(([k,v],i)=>{
+    const x = PAD + i*cw;
+    if (i){ c.strokeStyle = T.line; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(x, y+16); c.lineTo(x, y+68); c.stroke(); }
+    c.fillStyle = T.dim; c.font = `12px ${F}`;
+    c.fillText(k, x+20, y+19);
+    c.fillStyle = T.fg;  c.font = `600 21px ${M}`;
+    c.fillText(v, x+20, y+42);
+  });
+  y += 84 + 26;
+
+  // 指标行
+  rows.forEach(r=>{
+    if (!r){
+      c.strokeStyle = T.line; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(PAD, y+sepH/2); c.lineTo(W-PAD, y+sepH/2); c.stroke();
+      y += sepH; return;
+    }
+    c.fillStyle = T.dim; c.font = `15px ${F}`;
+    c.fillText(r[0], PAD, y+14);
+    c.fillStyle = T.fg;  c.font = `600 16px ${M}`;
+    c.textAlign = 'right'; c.fillText(r[1], W-PAD, y+13); c.textAlign = 'left';
+    y += rowH;
+  });
+
+  y += 24;
+  c.fillStyle = T.dim; c.font = `12px ${F}`;
+  c.fillText('灵敏度匹配测试　·　测的是与你肌肉记忆的匹配度，不等于性能最优', PAD, y);
+  return cv;
+}
+
+/** 成绩单文件名，和 JSON 用同一套前缀规则 */
+function resultFileName(R, ext){
+  const gm = (R.cfg && GAMES[R.cfg.game]) || G;
+  const who = (R.cfg && R.cfg.who) ? R.cfg.who.replace(/[^\w一-龥-]/g,'') + '-' : '';
+  const tag = R.mode==='ab' ? 'ab-' : R.mode==='new' ? 'newbie-' : '';
+  const ts  = new Date(R.ts).toISOString().slice(0,16).replace(/[:T]/g,'');
+  return `${gm.filePrefix}-${tag}${who}${ts}.${ext}`;
+}
+
+/** 结果页的两个导出按钮。成绩单是主按钮，原始 JSON 退到次要位置。 */
+function bindResultExport(R){
   $('btnExport').onclick = ()=>{
-    const b = new Blob([JSON.stringify(R,null,2)],{type:'application/json'});
+    try{
+      drawScoreCard(R).toBlob(b=>{
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = resultFileName(R, 'png');
+        a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+      }, 'image/png');
+    }catch(e){ alert('生成成绩单失败：' + e.message + '\n可以改用「原始数据」按钮。'); }
+  };
+  const raw = $('btnRaw');
+  if (raw) raw.onclick = ()=>{
+    const b = new Blob([JSON.stringify(R,null,2)], {type:'application/json'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(b);
-    a.download = `${(R.cfg&&R.cfg.game&&GAMES[R.cfg.game]?GAMES[R.cfg.game]:G).filePrefix}-${(R.cfg&&R.cfg.who?R.cfg.who.replace(/[^\w一-龥-]/g,'')+'-':'')}${new Date(R.ts).toISOString().slice(0,16).replace(/[:T]/g,'')}.json`;
+    a.download = resultFileName(R, 'json');
     a.click(); URL.revokeObjectURL(a.href);
   };
-  window.scrollTo(0,0);
 }
 
 /* ═══════════ 启动流程 ═══════════ */
