@@ -1,10 +1,4 @@
-# 同目录下另一个项目（六月的 OpenCV 视频处理），不属于这个仓库
-fly_*.py
-preview_*.py
-video_info*.py
-scratch_wc.json
-
-# 工具本地配置
+# 本地工具配置
 .claude/
 
 # 测试人员导出的数据
