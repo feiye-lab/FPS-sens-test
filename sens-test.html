@@ -1,0 +1,3321 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>灵敏度匹配测试</title>
+<style>
+:root{
+  /* 默认 = CS2 主题。整套界面只吃这些变量，换游戏时整体换掉即可。
+     --ok/--warn/--bad 是语义状态色，两个主题共用，不跟着换 ——
+     无畏契约的强调色本身就是红的，若连 --bad 也跟着变，报错提示就分不出来了。 */
+  --bg:#0b1520; --panel:#111e2c; --panel2:#182838; --line:#24384d;
+  --fg:#e8eef5; --dim:#8fa3b8; --dim2:#61748a;
+  --acc:#f5b300; --acc2:#ffd24a; --accsoft:rgba(245,179,0,.07);
+  --glow:rgba(45,105,175,.20);
+  --ok:#3fb950; --warn:#d29922; --bad:#f85149; --blue:#5ba3e0;
+  --mono:ui-monospace,"SF Mono",Consolas,"Cascadia Mono",monospace;
+}
+/* CS2：经典的深蓝底 + 黄色强调 */
+html[data-game="cs2"]{
+  --bg:#0b1520; --panel:#111e2c; --panel2:#182838; --line:#24384d;
+  --fg:#e8eef5; --dim:#8fa3b8; --dim2:#61748a;
+  --acc:#f5b300; --acc2:#ffd24a; --accsoft:rgba(245,179,0,.07);
+  --glow:rgba(45,105,175,.20); --blue:#5ba3e0;
+}
+/* 无畏契约：近黑底 + 品牌红 #ff4655，正文用它那个偏暖的米白 #ece8e1 */
+html[data-game="val"]{
+  --bg:#0d1117; --panel:#14181f; --panel2:#1b2029; --line:#2b323d;
+  --fg:#ece8e1; --dim:#9aa2ad; --dim2:#69717c;
+  --acc:#ff4655; --acc2:#ff8b95; --accsoft:rgba(255,70,85,.07);
+  --glow:rgba(255,70,85,.16); --blue:#6c9ee0;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:var(--bg); color:var(--fg);
+  /* 顶部一圈主题色辉光，是两套配色最直观的区分，比单纯换色块更有辨识度 */
+  background-image:radial-gradient(1100px 400px at 50% -140px, var(--glow), transparent 72%);
+  background-attachment:fixed;
+  font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,sans-serif;
+  font-size:15px; line-height:1.6; overflow-x:hidden;
+  transition:background-color .3s ease, color .3s ease;
+}
+.card,.ro>div,.note,.mode{transition:background-color .3s ease, border-color .3s ease}
+h1,h2,h3{margin:0; font-weight:650; line-height:1.3}
+a{color:var(--blue)}
+.wrap{max-width:920px;margin:0 auto;padding:40px 24px 80px}
+.hidden{display:none !important}
+
+/* ---------- setup ---------- */
+.hd{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.hd h1{font-size:26px;letter-spacing:.5px}
+.hd .tag{font-size:12px;color:var(--acc);border:1px solid var(--acc);border-radius:3px;padding:1px 7px;font-family:var(--mono)}
+.sub{color:var(--dim);font-size:13.5px;margin-bottom:28px}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px;margin-bottom:18px}
+.card>h2{font-size:15px;margin-bottom:16px;color:var(--fg);display:flex;align-items:center;gap:9px}
+.card>h2::before{content:"";width:3px;height:14px;background:var(--acc);border-radius:2px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px 18px}
+.f{display:flex;flex-direction:column;gap:6px}
+.f label{font-size:12.5px;color:var(--dim)}
+.f .hint{font-size:11.5px;color:var(--dim2);line-height:1.4}
+input[type=number],select{
+  background:var(--panel2);border:1px solid var(--line);color:var(--fg);
+  border-radius:6px;padding:9px 11px;font-size:14px;font-family:var(--mono);width:100%;
+}
+input[type=number]:focus,select:focus{outline:none;border-color:var(--acc)}
+.chk{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--fg);cursor:pointer;user-select:none;padding-top:20px}
+.chk input{width:16px;height:16px;accent-color:var(--acc);cursor:pointer}
+
+/* readout */
+.ro{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:4px}
+.ro>div{background:var(--panel2);padding:12px 14px}
+.ro .k{font-size:11.5px;color:var(--dim);margin-bottom:3px}
+.ro .v{font-size:19px;font-family:var(--mono);font-weight:600}
+.ro .v small{font-size:12px;color:var(--dim);font-weight:400;margin-left:2px}
+.ro .v.hl{color:var(--acc)}
+
+.note{background:var(--panel2);border-left:3px solid var(--blue);border-radius:0 6px 6px 0;padding:12px 15px;font-size:13px;color:var(--dim);margin-top:16px}
+.note b{color:var(--fg);font-weight:600}
+.note.w{border-left-color:var(--warn)}
+.note.e{border-left-color:var(--bad)}
+
+.btn{
+  background:var(--acc);color:#1a1005;border:none;border-radius:8px;
+  padding:14px 30px;font-size:16px;font-weight:650;cursor:pointer;
+  font-family:inherit;transition:filter .12s;
+}
+.btn:hover{filter:brightness(1.1)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.gh{background:transparent;color:var(--fg);border:1px solid var(--line);font-size:14px;padding:11px 22px;font-weight:500}
+.btn.gh:hover{border-color:var(--dim);filter:none}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+
+details.adv{margin-top:14px;border-top:1px solid var(--line);padding-top:14px}
+details.adv summary{cursor:pointer;font-size:13px;color:var(--dim);user-select:none}
+details.adv summary:hover{color:var(--fg)}
+details.adv .grid{margin-top:14px}
+
+.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.mode{display:flex;gap:11px;align-items:flex-start;background:var(--panel2);border:1px solid var(--line);
+  border-radius:8px;padding:14px 15px;cursor:pointer;transition:border-color .12s}
+.mode:hover{border-color:var(--dim2)}
+.mode:has(input:checked){border-color:var(--acc);background:var(--accsoft)}
+.mode input{accent-color:var(--acc);margin-top:3px;flex:none;cursor:pointer}
+.mode .mn{font-size:14px;font-weight:600;margin-bottom:3px}
+.mode .md{font-size:12px;color:var(--dim);line-height:1.55}
+.gsel .mode .mn::before{content:"";display:inline-block;width:9px;height:9px;border-radius:2px;
+  background:var(--gdot);margin-right:8px;vertical-align:baseline}
+.gsel .mode[data-g="cs2"]{--gdot:#f5b300}
+.gsel .mode[data-g="val"]{--gdot:#ff4655}
+.tag2{font-size:10.5px;font-family:var(--mono);color:var(--acc);border:1px solid var(--acc);border-radius:3px;padding:0 5px;margin-left:4px}
+.cmp{display:grid;grid-template-columns:1fr auto 1fr;gap:0;align-items:stretch;margin:4px 0}
+.cmp .side{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:18px}
+.cmp .side.win{border-color:var(--ok);background:rgba(63,185,80,.07)}
+.cmp .vs{display:flex;align-items:center;justify-content:center;padding:0 16px;font-family:var(--mono);color:var(--dim2);font-size:13px}
+.cmp .sl{font-size:11.5px;font-family:var(--mono);color:var(--dim);letter-spacing:1px;margin-bottom:6px}
+.cmp .sv{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1;margin-bottom:4px}
+.cmp .sc{font-size:12px;color:var(--dim2)}
+.cmp .badge{display:inline-block;font-size:11px;font-family:var(--mono);color:var(--ok);border:1px solid var(--ok);border-radius:3px;padding:1px 6px;margin-top:10px}
+.scard{margin-top:20px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.scard .sh,.scard .sr{display:grid;grid-template-columns:1fr 90px 90px 78px;gap:8px;padding:11px 14px;align-items:center}
+.scard .sh{background:var(--panel2);font-size:11.5px;color:var(--dim2);font-family:var(--mono)}
+.scard .sh span:not(:first-child),.scard .sr span:not(:first-child){text-align:right}
+.scard .sr{border-top:1px solid var(--line);font-size:13.5px}
+.scard .sr span:nth-child(2),.scard .sr span:nth-child(3){font-family:var(--mono)}
+.scard .su{display:block;font-size:11px;color:var(--dim2);margin-top:1px}
+.scard .sv2{font-size:12px;font-family:var(--mono);color:var(--dim)}
+.xhcode{display:flex;gap:8px;margin-top:18px}
+.xhcode input{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--fg);
+  border-radius:6px;padding:9px 12px;font-family:var(--mono);font-size:13px;min-width:0}
+.xhcode input:focus{outline:none;border-color:var(--acc)}
+#xhMsg{font-size:12.5px;margin-top:8px;min-height:18px;font-family:var(--mono)}
+#xhMsg.ok{color:var(--ok)} #xhMsg.err{color:var(--bad)}
+.xh{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-bottom:4px}
+#xhPrev{background:#0a0d12;border:1px solid var(--line);border-radius:8px;flex:none}
+input[type=color]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px;height:38px;width:100%;cursor:pointer}
+ol.steps{margin:0;padding-left:20px;font-size:13.5px;color:var(--dim)}
+ol.steps li{margin-bottom:7px}
+ol.steps b{color:var(--fg)}
+.phz{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:4px}
+.phz>div{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:11px 13px}
+.phz .n{font-size:13.5px;font-weight:600;margin-bottom:2px}
+.phz .d{font-size:11.5px;color:var(--dim2);font-family:var(--mono)}
+
+/* ---------- test ---------- */
+#screenTest{position:fixed;inset:0;background:#000;z-index:50}
+#cv{display:block;width:100%;height:100%;cursor:none}
+#hud{position:absolute;top:0;left:0;right:0;padding:14px 20px;pointer-events:none;
+  display:flex;justify-content:space-between;align-items:flex-start;
+  font-family:var(--mono);font-size:12.5px;color:rgba(230,237,243,.55);
+  text-shadow:0 1px 3px rgba(0,0,0,.9)}
+#hudPhase{color:var(--acc2);font-size:14px;font-weight:600}
+#hudR{text-align:right;line-height:1.7}
+#bar{position:absolute;left:0;bottom:0;height:3px;background:var(--acc);width:0%;transition:width .1s linear}
+#trans{position:absolute;inset:0;background:rgba(6,9,13,.94);display:flex;align-items:center;justify-content:center;text-align:center;z-index:5}
+#trans .tin{max-width:560px;padding:30px}
+#trans .step{font-size:11.5px;letter-spacing:2.5px;color:var(--dim2);font-family:var(--mono);margin-bottom:10px}
+#trans h2{font-size:26px;margin-bottom:10px}
+#trans p{color:var(--dim);font-size:14.5px;margin:0 0 22px;line-height:1.75}
+#trans .tdone{font-size:13px;color:var(--ok);font-family:var(--mono);margin-bottom:22px;min-height:19px}
+#trans .tcount{font-family:var(--mono);font-size:50px;font-weight:700;color:var(--acc);line-height:1}
+#trans .thint{font-size:12.5px;color:var(--dim2);margin-top:16px}
+#overlay{position:absolute;inset:0;background:rgba(6,9,13,.93);display:flex;align-items:center;justify-content:center;text-align:center;z-index:6}
+#overlay .in{max-width:520px;padding:30px}
+#overlay h2{font-size:22px;margin-bottom:12px}
+#overlay p{color:var(--dim);font-size:14px;margin:0 0 20px}
+#overlay .kb{font-family:var(--mono);background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-size:12.5px;color:var(--fg)}
+
+/* ---------- results ---------- */
+.verdict{border-radius:10px;padding:26px;margin-bottom:18px;border:1px solid}
+.verdict.keep{background:rgba(63,185,80,.07);border-color:rgba(63,185,80,.35)}
+.verdict.tune{background:rgba(210,153,34,.07);border-color:rgba(210,153,34,.35)}
+.verdict.chg{background:rgba(248,81,73,.07);border-color:rgba(248,81,73,.35)}
+.verdict.nodata{background:rgba(139,152,168,.06);border-color:var(--line)}
+.verdict.nodata .lbl{color:var(--dim)}
+.verdict.adapting{background:rgba(248,81,73,.07);border-color:rgba(248,81,73,.35)}
+.verdict.adapting .lbl{color:var(--bad)}
+.adapt{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:4px}
+.adapt>div{background:var(--panel2);padding:14px 16px}
+.adapt .k{font-size:11.5px;color:var(--dim);margin-bottom:4px}
+.adapt .v{font-family:var(--mono);font-size:22px;font-weight:700}
+.adapt .s{font-size:11.5px;color:var(--dim2);margin-top:3px}
+.hrow{display:block;width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);
+  border-radius:8px;padding:13px 15px;margin-bottom:8px;cursor:pointer;font-family:inherit;
+  transition:border-color .12s}
+.hrow:hover{border-color:var(--acc)}
+.hrow .h1{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.hrow .ht{font-family:var(--mono);font-size:12px;color:var(--dim2)}
+.hrow .hm{font-size:13px;color:var(--dim);margin-left:10px}
+.hrow .hv{font-size:14px;font-weight:650}
+.hrow .hv.ok{color:var(--ok)} .hrow .hv.warn{color:var(--warn)}
+.hrow .hv.bad{color:var(--bad)} .hrow .hv.dim{color:var(--dim2)}
+details.gloss{margin-top:20px;border:1px solid var(--line);border-radius:9px;padding:14px 18px;background:var(--panel)}
+details.gloss summary{cursor:pointer;font-size:13.5px;color:var(--dim);user-select:none}
+details.gloss summary:hover{color:var(--fg)}
+.gsec{font-size:12px;color:var(--acc);font-family:var(--mono);margin:16px 0 8px;letter-spacing:.5px}
+.gitem{display:grid;grid-template-columns:132px 1fr;gap:14px;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+.gitem b{color:var(--fg);font-weight:600}
+.gitem span{color:var(--dim);line-height:1.6}
+@media(max-width:560px){.gitem{grid-template-columns:1fr;gap:3px}}
+.hrow .h2l{font-size:12.5px;color:var(--dim);margin-top:5px;font-family:var(--mono)}
+.pchart{position:relative;margin-top:18px;padding-top:20px}
+.paxis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--dim2);
+  padding:0 44px 0 30px;position:absolute;top:0;left:0;right:0}
+.pmark{position:absolute;top:18px;bottom:0;width:1px;background:var(--acc2);opacity:.5}
+.prow{display:grid;grid-template-columns:26px 1fr 40px;align-items:center;gap:4px;height:13px}
+.prow .pi{font-family:var(--mono);font-size:9.5px;color:var(--dim2);text-align:right}
+.ptrack{position:relative;height:100%}
+.pdot{position:absolute;top:50%;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;border-radius:50%;background:var(--acc)}
+.prow .pv{font-family:var(--mono);font-size:10px;color:var(--dim);text-align:right}
+.verdict .lbl{font-size:12.5px;letter-spacing:1.5px;text-transform:uppercase;font-family:var(--mono);margin-bottom:9px}
+.verdict.keep .lbl{color:var(--ok)} .verdict.tune .lbl{color:var(--warn)} .verdict.chg .lbl{color:var(--bad)}
+.verdict h2{font-size:23px;margin-bottom:8px}
+.verdict p{color:var(--dim);font-size:14px;margin:0}
+.sensbox{display:flex;align-items:center;gap:18px;margin:20px 0 4px;flex-wrap:wrap}
+.sensbig{font-family:var(--mono);font-size:40px;font-weight:700;color:var(--acc);line-height:1}
+.sensold{font-family:var(--mono);font-size:17px;color:var(--dim2);text-decoration:line-through}
+.cmd{display:flex;gap:8px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.cmd code{background:#0a0d12;border:1px solid var(--line);border-radius:6px;padding:9px 14px;font-family:var(--mono);font-size:14px;color:var(--acc2)}
+.cpy{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:6px;padding:9px 14px;font-size:12.5px;cursor:pointer;font-family:inherit}
+.cpy:hover{color:var(--fg);border-color:var(--dim)}
+
+table.dt{width:100%;border-collapse:collapse;font-size:13.5px}
+table.dt td{padding:9px 4px;border-bottom:1px solid var(--line)}
+table.dt tr:last-child td{border-bottom:none}
+table.dt td:first-child{color:var(--dim)}
+table.dt td:last-child{text-align:right;font-family:var(--mono);font-weight:600}
+table.dt td .sm{font-size:11.5px;color:var(--dim2);font-weight:400;font-family:inherit}
+
+.bars{display:flex;flex-direction:column;gap:9px;font-family:var(--mono);font-size:12.5px}
+.brow{display:grid;grid-template-columns:46px 1fr 68px;align-items:center;gap:10px}
+.brow .nm{color:var(--dim);font-family:inherit;font-size:12.5px}
+.btrack{position:relative;height:20px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.btrack::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--dim2);opacity:.55}
+.bfill{position:absolute;top:3px;bottom:3px;border-radius:2px}
+.brow .vl{text-align:right}
+.axis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--dim2);margin:6px 0 0;padding:0 78px 0 56px}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ SETUP ══════════════════ -->
+<div id="screenSetup" class="wrap">
+  <div class="hd">
+    <h1 id="hTitle">灵敏度匹配测试</h1>
+    <span class="tag">5 min</span>
+  </div>
+
+  <div class="card">
+    <h2>游戏</h2>
+    <div class="modes gsel">
+      <label class="mode" data-g="cs2"><input type="radio" name="game" value="cs2" checked>
+        <div><div class="mn">CS2</div><div class="md">Hor+ 视野 · 分享代码准星</div></div></label>
+      <label class="mode" data-g="val"><input type="radio" name="game" value="val">
+        <div><div class="mn">无畏契约</div><div class="md">固定视野 · 准星代码</div></div></label>
+    </div>
+    <div class="note" id="gameNote"></div>
+    <div class="row" style="gap:8px;margin-top:10px;align-items:center">
+      <button class="cpy" id="btnConv">按手感换算过来</button>
+      <span class="hint" id="convHint">把另一个游戏的灵敏度按相同 cm/360 换成本游戏的值</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>测试模式</h2>
+    <div class="modes">
+      <label class="mode"><input type="radio" name="mode" value="match" checked>
+        <div><div class="mn">匹配度测试</div><div class="md">测当前灵敏度合不合手</div></div></label>
+      <label class="mode"><input type="radio" name="mode" value="ab">
+        <div><div class="mn">灵敏度对比 <span class="tag2">A/B</span></div><div class="md">同场交替比较两个灵敏度</div></div></label>
+      <label class="mode"><input type="radio" name="mode" value="new">
+        <div><div class="mn">新手找灵敏度 <span class="tag2">新</span></div><div class="md">没有固定灵敏度时用，扫描 3 档</div></div></label>
+    </div>
+    <div class="grid hidden" id="newBox" style="margin-top:16px">
+      <div class="f">
+        <label>握法</label>
+        <select id="iGrip">
+          <option value="arm">手臂流（大幅度用手臂推）</option>
+          <option value="hybrid" selected>混合流（手臂+手腕）</option>
+          <option value="wrist">手腕流（主要靠手腕）</option>
+        </select>
+        <span class="hint">不确定就选混合流</span>
+      </div>
+      <div class="f">
+        <label>候选值来源</label>
+        <select id="iCandMode">
+          <option value="auto" selected>按握法自动推导</option>
+          <option value="custom">自己指定</option>
+        </select>
+      </div>
+      <div class="f">
+        <label id="labCand">推出的候选值</label>
+        <input type="text" id="oCand" readonly style="font-family:var(--mono)"
+               placeholder="例：0.5, 0.7, 0.9（2–4 个，逗号分隔）">
+        <span class="hint" id="oCandCm">—</span>
+      </div>
+    </div>
+    <div class="grid hidden" id="abBox" style="margin-top:16px">
+      <div class="f">
+        <label>灵敏度 A（当前）</label>
+        <input type="number" id="iSensA" value="0.35" min="0.01" max="10" step="0.001">
+        <span class="hint" id="hintA">—</span>
+      </div>
+      <div class="f">
+        <label>灵敏度 B（想试的）</label>
+        <input type="number" id="iSensB" value="0.45" min="0.01" max="10" step="0.001">
+        <span class="hint" id="hintB">—</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>你的配置</h2>
+    <div class="note w hidden" id="firstRun"><b>请先把下面的 DPI 和灵敏度改成你自己的。</b></div>
+    <div class="grid">
+      <div class="f">
+        <label>测试者标识</label>
+        <input type="text" id="iWho" placeholder="你的名字或编号" maxlength="24" spellcheck="false">
+        <span class="hint">会写进导出文件名和记录，方便区分不同人</span>
+      </div>
+      <div class="f">
+        <label>鼠标 DPI</label>
+        <input type="number" id="iDpi" value="1600" min="100" max="32000" step="50">
+        <span class="hint">按驱动里显示的档位填</span>
+      </div>
+      <div class="f">
+        <label id="labSens">游戏内灵敏度</label>
+        <input type="number" id="iSens" value="0.6" min="0.05" max="20" step="0.01">
+        <span class="hint" id="hintSens">—</span>
+      </div>
+      <div class="f">
+        <label>回报率</label>
+        <select id="iPoll">
+          <option value="125">125 Hz</option>
+          <option value="250">250 Hz</option>
+          <option value="500">500 Hz</option>
+          <option value="1000" selected>1000 Hz</option>
+          <option value="2000">2000 Hz</option>
+          <option value="4000">4000 Hz</option>
+          <option value="8000">8000 Hz</option>
+        </select>
+        <span class="hint">用于和实测值比对</span>
+      </div>
+      <div class="f">
+        <label>画面比例</label>
+        <select id="iAspect">
+          <option value="1.33333">4:3</option>
+          <option value="1.6">16:10</option>
+          <option value="1.77778" selected>16:9</option>
+        </select>
+        <span class="hint">游戏里的分辨率比例</span>
+      </div>
+      <div class="f">
+        <label>显示方式</label>
+        <select id="iStretch">
+          <option value="0" selected>黑边（原生比例，两侧留黑）</option>
+          <option value="1">拉伸铺满（Fill）</option>
+        </select>
+        <span class="hint" id="hintStretch">—</span>
+      </div>
+      <div class="f">
+        <label>显示器比例</label>
+        <select id="iDisplay">
+          <option value="1.77778">16:9</option>
+          <option value="1.6">16:10</option>
+          <option value="2.37037">21:9</option>
+          <option value="1.33333">4:3</option>
+        </select>
+        <span class="hint" id="hintDisplay">拉伸倍数由它决定，与浏览器窗口无关</span>
+      </div>
+      <div class="f">
+        <label>游戏垂直分辨率</label>
+        <input type="number" id="iResY" value="1080" min="480" max="2160" step="1">
+        <span class="hint">用于把准星缩放到正确大小</span>
+      </div>
+    </div>
+
+    <div class="ro" id="ro">
+      <div><div class="k">cm/360</div><div class="v hl" id="oCm">—</div></div>
+      <div><div class="k">eDPI</div><div class="v" id="oEdpi">—</div></div>
+      <div><div class="k">180° 转身行程</div><div class="v" id="oHalf">—</div></div>
+      <div><div class="k">每计数转角</div><div class="v" id="oPer">—</div></div>
+      <div><div class="k">准星每计数像素</div><div class="v" id="oPx">—</div></div>
+      <div><div class="k">水平 / 垂直 FOV</div><div class="v" id="oFov">—</div></div>
+    </div>
+
+    <div class="note" id="hintFov"></div>
+    <div class="note" id="sanity"></div>
+
+    <details class="adv">
+      <summary>高级设置</summary>
+      <div class="grid">
+        <div class="f">
+          <label>目标角半径 (°)</label>
+          <input type="number" id="iTgt" value="1.4" min="0.3" max="5" step="0.1">
+          <span class="hint">默认 1.4° ≈ 10 米处的身体宽度</span>
+        </div>
+        <div class="f">
+          <label>模拟回报率上限 (Hz)</label>
+          <select id="iSim">
+            <option value="0" selected>不限制（用硬件原始值）</option>
+            <option value="125">降采样到 125 Hz</option>
+            <option value="250">降采样到 250 Hz</option>
+            <option value="500">降采样到 500 Hz</option>
+          </select>
+          <span class="hint">只能往低模拟，体感对比用，不产生统计结论</span>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>准星</h2>
+    <div class="xh">
+      <canvas id="xhPrev" width="150" height="150"></canvas>
+      <div style="flex:1">
+        <!-- 两个游戏共有的两项，放在游戏专属块外面，避免重复 id -->
+        <div class="grid">
+          <div class="f"><label>颜色</label><input type="color" id="xCol" value="#00ff00"></div>
+          <label class="chk"><input type="checkbox" id="xDot"> <span>显示中心点</span></label>
+        </div>
+        <div class="grid" id="xhCS" style="margin-top:10px">
+          <div class="f"><label>cl_crosshairsize</label><input type="number" id="xSize" value="3" min="0" max="20" step="0.5"></div>
+          <div class="f"><label>cl_crosshairthickness</label><input type="number" id="xThick" value="1" min="0.1" max="6" step="0.1"></div>
+          <div class="f"><label>cl_crosshairgap</label><input type="number" id="xGap" value="-1" min="-10" max="20" step="0.5"></div>
+          <div class="f"><label>cl_crosshair_outlinethickness</label><input type="number" id="xOut" value="1" min="0" max="3" step="0.5"></div>
+          <div class="f"><label>cl_crosshairalpha</label><input type="number" id="xAlpha" value="255" min="0" max="255" step="5"></div>
+          <label class="chk"><input type="checkbox" id="xT"> <span>T 形准星 (cl_crosshair_t)</span></label>
+        </div>
+        <div class="grid hidden" id="xhVAL" style="margin-top:10px">
+          <div class="f"><label>内线长度</label><input type="number" id="xInL" value="6" min="0" max="20" step="1"></div>
+          <div class="f"><label>内线粗细</label><input type="number" id="xInT" value="2" min="0" max="10" step="1"></div>
+          <div class="f"><label>内线偏移</label><input type="number" id="xInO" value="3" min="0" max="20" step="1"></div>
+          <div class="f"><label>内线不透明度</label><input type="number" id="xInA" value="0.8" min="0" max="1" step="0.05"></div>
+          <div class="f"><label>外线长度</label><input type="number" id="xOutL" value="2" min="0" max="20" step="1"></div>
+          <div class="f"><label>外线粗细</label><input type="number" id="xOutT" value="2" min="0" max="10" step="1"></div>
+          <div class="f"><label>外线偏移</label><input type="number" id="xOutO" value="10" min="0" max="40" step="1"></div>
+          <div class="f"><label>外线不透明度</label><input type="number" id="xOutA" value="0.35" min="0" max="1" step="0.05"></div>
+          <div class="f"><label>描边粗细（0=关）</label><input type="number" id="xStroke" value="1" min="0" max="6" step="1"></div>
+          <div class="f"><label>中心点粗细</label><input type="number" id="xDotT" value="2" min="0" max="10" step="1"></div>
+          <label class="chk"><input type="checkbox" id="xOutB" checked> <span>显示外线</span></label>
+        </div>
+      </div>
+    </div>
+    <div class="xhcode">
+      <input type="text" id="xhCode" placeholder="" spellcheck="false">
+      <button class="cpy" id="btnXhImport">导入</button>
+    </div>
+    <div id="xhMsg"></div>
+    <div class="row" style="gap:8px;margin-top:10px">
+      <button class="cpy" id="btnXhCode">复制准星代码</button>
+      <button class="cpy hidden" id="btnXhCvar">复制控制台命令</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>测试流程</h2>
+    <div class="phz" id="phz"></div>
+    <ol class="steps" style="margin-top:18px">
+      <li>目标出现后<b>果断甩过去点击</b>，打不中没关系。</li>
+      <li>用平时打游戏的姿势，<b>别刻意放慢求稳</b>。</li>
+      <li>按 <b>F11</b> 全屏；<b>Esc</b> 暂停。</li>
+    </ol>
+  </div>
+
+  <div class="card hidden" id="histCard">
+    <h2>测试记录</h2>
+    <div id="histList"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="cpy" id="btnHistClear">清空记录</button>
+      <span style="font-size:12px;color:var(--dim2)">点任意一条可以重新查看完整结果 · 最多保留 10 次</span>
+    </div>
+  </div>
+
+  <div class="note e hidden" id="lastErr"></div>
+  <div class="note e hidden" id="compatWarn"></div>
+
+  <div class="row">
+    <button class="btn" id="btnStart">开始测试</button>
+  </div>
+</div>
+
+<!-- ══════════════════ TEST ══════════════════ -->
+<div id="screenTest" class="hidden">
+  <canvas id="cv"></canvas>
+  <div id="hud">
+    <div><div id="hudPhase">—</div><div id="hudTip" style="margin-top:2px"></div></div>
+    <div id="hudR"></div>
+  </div>
+  <div id="bar"></div>
+  <div id="trans" class="hidden">
+    <div class="tin">
+      <div class="tdone" id="tDone"></div>
+      <div class="step" id="tStep"></div>
+      <h2 id="tName"></h2>
+      <p id="tDesc"></p>
+      <div class="tcount" id="tCount">3</div>
+      <div class="thint">点击继续，或等倒计时结束</div>
+    </div>
+  </div>
+  <div id="overlay">
+    <div class="in">
+      <h2 id="ovTitle">准备好了吗</h2>
+      <p id="ovBody"></p>
+      <button class="btn" id="ovBtn">点击开始</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ RESULTS ══════════════════ -->
+<div id="screenResult" class="wrap hidden"></div>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════
+   灵敏度匹配测试（CS2 / 无畏契约）
+   核心原理：运动皮层校准在某个灵敏度 S* 上。在灵敏度 S 下甩枪时，
+   首次停枪落点 / 目标角度 ≈ S/S*。所以单次试验就是 S/S* 的一个估计，
+   不需要多档位扫描 —— 这是它能塞进 5 分钟的根本原因。
+   ═══════════════════════════════════════════════════════════════════ */
+
+const D2R = Math.PI/180, R2D = 180/Math.PI;
+const SPRAY_RPM  = 600;   // AK-47 射速，600 发/分 = 每 100ms 一发
+const SPRAY_SHOTS = 30;   // 一个弹匣
+/* 量级怎么定的（说清楚，免得看着像随手写的）：
+   网上找不到 AK 弹道的可信角度数值，社区资料全是定性描述，所以**不按角度反推**，
+   改从玩家能验证的那一端定：CS 玩家普遍反映压一梭 AK 大概要下拉三四厘米，
+   而典型灵敏度在 50 cm/360 上下 → 3.5/50×360 ≈ 25°。取 22° 落在这个区间偏保守的一侧。
+   先前用 12° 是错的：在 43 cm/360 上只需下拉 1.4 cm，三秒钟走这么点距离根本不吃力，
+   区分不出灵敏度。改完后同样设置要走 2.6 cm，才是个真的持续动作。
+   这仍然是**约数**，不声称等于 AK 实测值。界面上会把"本次要下拉几厘米"直接算给玩家看，
+   觉得和游戏里手感对不上，改这两个常数即可整体缩放。 */
+const SPRAY_RISE = 22;    // 累计纵向抬升（度）
+const SPRAY_SWAY = 8;     // 之后的横向摆幅（度）
+const SPRAY_TAU  = 3.5;   // 抬升曲线的时间常数，单位「发」。峰值速率出现在第 τ 发
+const POST_CLICK_MS = 180;        // 点击后继续采样的时长，保证弹道终点被观测到
+
+/* ═══════════ 游戏注册表 ═══════════
+   两个游戏只有三样东西不同：每计数转角、FOV 模型、准星系统。
+   测量内核（落点比值、Welch 检验、Holm 校正、适应曲线）是纯角度量，与引擎无关，
+   一行都不用分支 —— 这也是当初把换算和渲染分开的价值。
+
+   FOV 模型是最容易搞错的一处，两个游戏**不是数值不同，是缩放方式不同**：
+     CS2      Hor+  ：垂直 FOV 恒定 73.74°，水平随比例变（4:3 → 90°，16:9 → 106.26°）
+                      换 4:3 是真的看得更窄，拉伸铺满才把模型换回来 —— 牺牲视野换模型变大
+     无畏契约 固定  ：水平垂直**都**恒定 103°×70.53°，换比例只是把同一幅画面压扁/拉开
+                      依据 KovaaK's FILM 记法文档原话：基准画面 16:9，"任何比例变化只会
+                      拉伸或压缩画面，同时保持相同的水平和垂直 FOV"
+                      推论：4:3 拉伸铺满 ≡ 16:9 原生（压窄再拉回，正好抵消），拉伸是白拉；
+                            4:3 黑边反而把模型压细。和 CS 的结论正好相反。
+   无畏契约的 103° 是社区通用值，尚未实机核实。它只影响目标的视觉大小，
+   不影响落点比值的测量（纯角度量），所以不阻塞结论。 */
+const GAMES = {
+  cs2: {
+    id:'cs2', name:'CS2', short:'CS',
+    yaw:0.022,
+    fovMode:'hor+', vFov:2*Math.atan(0.75),
+    sensLabel:'CS2 游戏内灵敏度', sensHint:'控制台 <code>sensitivity</code> 的值',
+    sensMin:0.05, sensMax:20, sensStep:0.01,
+    defDpi:1600, defSens:0.6, defA:0.6, defB:0.8,
+    proCm:'30–45', filePrefix:'cs-sens'
+  },
+  val: {
+    id:'val', name:'无畏契约', short:'无畏契约',
+    yaw:0.07,
+    fovMode:'fixed', hFov:103*D2R, baseA:16/9,
+    sensLabel:'无畏契约 游戏内灵敏度', sensHint:'设置 → 常规 → 瞄准灵敏度',
+    sensMin:0.01, sensMax:10, sensStep:0.001,
+    defDpi:800, defSens:0.4, defA:0.35, defB:0.45,
+    proCm:'33–65', filePrefix:'val-sens'
+  }
+};
+GAMES.val.vFov = 2*Math.atan(Math.tan(GAMES.val.hFov/2)/GAMES.val.baseA);   // ≈70.53°
+let G = GAMES.cs2;                // 当前游戏，由 setGame() 切换
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+
+/* ─────────── 配置 ─────────── */
+const ERR_KEY = 'sensTest.lastError';
+/* 闪退/报错捕获：测试人员反馈过测试中途闪退，但拿不到任何线索。
+   把错误连同环境一起落盘，下次打开时显示出来。 */
+(function(){
+  const save = (kind, msg, extra)=>{
+    try{ localStorage.setItem(ERR_KEY, JSON.stringify({
+      kind, msg:String(msg).slice(0,600), extra:String(extra||'').slice(0,900),
+      when:Date.now(), ua:navigator.userAgent.slice(0,180),
+      mem: (performance.memory ? Math.round(performance.memory.usedJSHeapSize/1048576)+'MB' : null),
+      screen: screen.width+'x'+screen.height, dpr: window.devicePixelRatio
+    })); }catch(e){}
+  };
+  window.addEventListener('error', e=>save('error', e.message, (e.error&&e.error.stack)||(e.filename+':'+e.lineno)));
+  window.addEventListener('unhandledrejection', e=>save('promise', (e.reason&&e.reason.message)||e.reason, e.reason&&e.reason.stack));
+})();
+const CFG_KEY = 'sensTest.cfg', RES_KEY = 'sensTest.lastResult', HIST_KEY = 'sensTest.history';
+
+/* ═══════════ 测试记录 ═══════════ */
+function saveHistory(R){
+  const put = a => localStorage.setItem(HIST_KEY, JSON.stringify(a));
+  try{
+    let h = JSON.parse(localStorage.getItem(HIST_KEY) || '[]');
+    h.unshift(R);
+    h = h.slice(0, 10);
+    try{ put(h); }
+    catch(e){                       // 超配额：从第二条起剥掉逐次原始数据
+      h = h.map((x,i)=> i===0 ? x : Object.assign({}, x, {trials:undefined, paceSeries:undefined}));
+      try{ put(h); }catch(e2){ try{ put([R]); }catch(e3){} }
+    }
+  }catch(e){}
+}
+function loadHistory(){
+  try{ return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); }catch(e){ return []; }
+}
+/** 一条记录 → 可读摘要（模式 / 配置 / 结论 / 关键数字） */
+function histSummary(R){
+  if (R.mode==='ab'){
+    const win = R.winner ? `灵敏度 ${R.winner} 更优` : (R.split ? '各有胜负' : '无显著差异');
+    const w = R.winner ? (R.winner==='A'?R.sensA:R.sensB) : null;
+    return {mode:'灵敏度对比', tone:R.winner?'ok':'dim', verdict:win,
+      detail:`${R.sensA} vs ${R.sensB}` + (w?` · 建议用 ${w}`:'')
+             + ` · 各 ${R.A?R.A.n:0}/${R.B?R.B.n:0} 次有效甩枪`};
+  }
+  if (R.mode==='new'){
+    const rec = R.decisive ? `选 ${R.best.cm.toFixed(0)} cm/360` : `${R.lo.toFixed(0)}–${R.hi.toFixed(0)} cm/360 都可以`;
+    return {mode:'新手扫描', tone:'ok', verdict:rec,
+      detail:`候选 ${R.cands.map(c=>c.sens).join(' / ')} · ${({arm:'手臂流',hybrid:'混合流',wrist:'手腕流'})[R.cfg.grip]||''}`};
+  }
+  const v = {keep:{t:'保持不变',c:'ok'}, tune:{t:`微调到 ${(R.newSens||0).toFixed(2)}`,c:'warn'},
+             chg:{t:`调整到 ${(R.newSens||0).toFixed(2)}`,c:'bad'},
+             adapting:{t:'不是你习惯的灵敏度',c:'bad'}, nodata:{t:'数据不足',c:'dim'}}[R.verdict]
+             || {t:R.verdict,c:'dim'};
+  let d = `sens ${R.cfg.sens} · ${(R.cmNow||0).toFixed(0)} cm/360 · ${R.n||0} 次有效甩枪`;
+  if (R.verdict==='adapting' && R.paceEarly) d += ` · 开头手速 ${R.paceEarly.toFixed(0)} cm/360`;
+  else if (R.verdict!=='nodata') d += ` · 偏差 ${pct(R.bias||0)}`;
+  return {mode:'匹配度测试', tone:v.c, verdict:v.t, detail:d};
+}
+function renderHistory(){
+  const h = loadHistory();
+  $('histCard').classList.toggle('hidden', h.length===0);
+  if (!h.length) return;
+  $('histList').innerHTML = h.map((R,i)=>{
+    const s = histSummary(R), d = new Date(R.ts);
+    const p2 = n => String(n).padStart(2,'0');
+    const when = `${p2(d.getMonth()+1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    const who = (R.cfg&&R.cfg.who) ? `<span class="hm" style="color:var(--acc2)">${R.cfg.who}</span>` : '';
+    return `<button class="hrow" data-i="${i}">
+      <div class="h1"><span><span class="ht">${when}</span>${who}<span class="hm">${s.mode}</span></span>
+        <span class="hv ${s.tone}">${s.verdict}</span></div>
+      <div class="h2l">${s.detail}</div></button>`;
+  }).join('');
+  $('histList').querySelectorAll('.hrow').forEach(b=>{
+    b.onclick = ()=>{
+      const R = loadHistory()[+b.dataset.i];
+      if (!R) return;
+      cfg = Object.assign(cfg, R.cfg||{});
+      $('screenSetup').classList.add('hidden');
+      if (R.mode==='ab') showABResults(R);
+      else if (R.mode==='new') showSweepResults(R);
+      else showResults(R);
+    };
+  });
+}
+/* 灵敏度和准星是**每个游戏各存一份**的（切游戏不能互相冲掉），
+   DPI、画面比例、回报率这些是硬件/显示器属性，两个游戏共用。 */
+const CS_XH_DEF  = {xSize:3, xThick:1, xGap:-1, xOut:1, xAlpha:255, xT:false, xCol:'#00ff00', xDot:false};
+const VAL_XH_DEF = {xInL:6, xInT:2, xInO:3, xInA:0.8, xOutB:true, xOutL:2, xOutT:2, xOutO:10,
+                    xOutA:0.35, xStroke:1, xDotT:2, xCol:'#ffffff', xDot:false};
+let cfg = {
+  game:'cs2',
+  who:'', mode:'match', grip:'hybrid', candMode:'auto', candList:'',
+  dpi:1600, poll:1000, aspect:1.77778,
+  stretch:false, display:1.77778, tgt:1.4, sim:0, resY:1080,
+  sens:0.6, sensA:0.6, sensB:0.8,
+  // 每游戏一份的灵敏度与准星（xhFull 保留代码里不参与渲染的字段，保证往返一致）
+  perGame:{
+    cs2:{sens:0.6,  sensA:0.6,  sensB:0.8,  xh:Object.assign({}, CS_XH_DEF)},
+    val:{sens:0.19, sensA:0.19, sensB:0.25, xh:Object.assign({}, VAL_XH_DEF)}
+  },
+  xhFull:{cs2:null, val:null}
+};
+Object.assign(cfg, CS_XH_DEF);   // 当前生效的准星字段平铺在 cfg 上，渲染代码直接读
+
+/** 当前游戏的准星 UI 字段名 */
+const xhKeys = () => G.id==='cs2' ? Object.keys(CS_XH_DEF) : Object.keys(VAL_XH_DEF);
+
+function readCfg(){
+  cfg.who     = ($('iWho').value||'').trim().slice(0,24);
+  cfg.mode    = document.querySelector('input[name=mode]:checked').value;
+  cfg.sensA   = +$('iSensA').value || G.defA;
+  cfg.sensB   = +$('iSensB').value || G.defB;
+  cfg.grip    = $('iGrip').value;
+  cfg.candMode= $('iCandMode').value;
+  if (cfg.candMode==='custom') cfg.candList = $('oCand').value;
+  cfg.dpi     = +$('iDpi').value || G.defDpi;
+  cfg.sens    = +$('iSens').value || G.defSens;
+  cfg.poll    = +$('iPoll').value;
+  cfg.aspect  = +$('iAspect').value;
+  cfg.stretch = $('iStretch').value === '1';
+  cfg.display = +$('iDisplay').value || 1.77778;
+  cfg.tgt     = +$('iTgt').value || 1.4;
+  cfg.sim     = +$('iSim').value;
+  cfg.resY    = +$('iResY').value || 1080;
+  for (const k of xhKeys()){
+    const el = $(k); if (!el) continue;
+    cfg[k] = el.type==='checkbox' ? el.checked : (el.type==='color' ? el.value : +el.value);
+  }
+  cfg.xhFull[G.id] = xhFromUI();   // 完整准星状态始终与 UI 同步，供渲染和导出使用
+  // 回存到本游戏的槽位
+  const P = cfg.perGame[G.id];
+  P.sens=cfg.sens; P.sensA=cfg.sensA; P.sensB=cfg.sensB;
+  for (const k of xhKeys()) P.xh[k] = cfg[k];
+  return cfg;
+}
+function writeCfg(c){
+  const m = document.querySelector(`input[name=mode][value="${c.mode||'match'}"]`);
+  if (m) m.checked = true;
+  $('iSensA').value=c.sensA!=null?c.sensA:c.sens; $('iSensB').value=c.sensB!=null?c.sensB:G.defB;
+  if (c.grip) $('iGrip').value=c.grip;
+  if (c.candMode) $('iCandMode').value=c.candMode;
+  $('iWho').value = c.who||'';
+  $('iDpi').value=c.dpi; $('iSens').value=c.sens; $('iPoll').value=c.poll;
+  $('iAspect').value=c.aspect; $('iStretch').value = c.stretch ? '1' : '0';
+  if (c.display) $('iDisplay').value = c.display;
+  $('iTgt').value=c.tgt; $('iSim').value=c.sim;
+  $('iResY').value=c.resY;
+  for (const k of xhKeys()){
+    const el = $(k); if (!el || c[k]===undefined) continue;
+    if (el.type==='checkbox') el.checked = !!c[k]; else el.value = c[k];
+  }
+}
+
+/** 切换游戏：把当前游戏的灵敏度/准星存回槽位，再把目标游戏的取出来铺到 UI。 */
+function setGame(id, opts){
+  if (!GAMES[id]) return;
+  if (G && G.id === id && !(opts&&opts.force)) return;
+  if (G && $('iSens')) readCfg();        // 先落盘当前游戏
+  G = GAMES[id]; cfg.game = id;
+  const P = cfg.perGame[id];
+  cfg.sens=P.sens; cfg.sensA=P.sensA; cfg.sensB=P.sensB;
+  Object.assign(cfg, P.xh);
+
+  const r = document.querySelector(`input[name=game][value="${id}"]`);
+  if (r) r.checked = true;
+  document.documentElement.setAttribute('data-game', id);   // 整套配色跟着换
+  $('hTitle').textContent = G.name + ' 灵敏度匹配测试';
+  document.title = G.name + ' 灵敏度匹配测试';
+  $('labSens').textContent = G.sensLabel;
+  $('hintSens').innerHTML  = G.sensHint;
+  for (const el of [$('iSens'), $('iSensA'), $('iSensB')]){
+    el.min = G.sensMin; el.max = G.sensMax; el.step = G.sensStep;
+  }
+  $('xhCS').classList.toggle('hidden', id!=='cs2');
+  $('xhVAL').classList.toggle('hidden', id!=='val');
+  $('btnXhCvar').classList.toggle('hidden', !G.xh.conVars);
+  $('btnXhCode').textContent = G.xh.codeLabel;
+  $('xhCode').placeholder = G.xh.placeholder;
+  $('xhCode').value = '';
+  xhMsg('', true);
+  $('gameNote').innerHTML = id==='cs2'
+    ? `视野 <b>Hor+</b>（垂直恒定 73.7°，4:3 会真的看窄）· 准星用 <code>CSGO-</code> 分享代码 · 每计数 0.022°`
+    : `视野 <b>固定</b> 103°×70.5°（换比例只拉伸不改视野）· 准星用分号代码 · 每计数 0.07°`;
+  writeCfg(cfg);
+  refreshReadout();
+}
+
+/** 按 cm/360 把当前灵敏度换算到另一个游戏。DPI 在等式里自动抵消，所以与 DPI 无关。 */
+function convertSens(fromId, toId, sens){
+  return sens * GAMES[fromId].yaw / GAMES[toId].yaw;
+}
+/** cm/360 = 360 / (DPI × sens × m_yaw) × 2.54 */
+const cm360 = (dpi,sens) => 360/(dpi*sens*G.yaw)*2.54;
+const sensFromCm = (dpi,cm) => 360/(dpi*G.yaw*(cm/2.54));
+/* 恒定，与画面比例无关。签名保留一个参数只是为了和调用点对齐、方便和 CS 版本对读。 */
+/* Hor+ 时随渲染比例变，固定 FOV 时是常数。tan(vFov/2) 就是 CS 那个 0.75。 */
+const hFovOf = a => G.fovMode==='hor+' ? 2*Math.atan(Math.tan(G.vFov/2)*a) : G.hFov;
+
+function refreshReadout(){
+  const c = readCfg();
+  const cm = cm360(c.dpi,c.sens), per = c.sens*G.yaw;
+  const hf = hFovOf(c.aspect);
+  // 准星处像素密度按 1920 宽的渲染分辨率估算
+  const pxPerDeg = (1920/2)/Math.tan(hf/2)*D2R;
+  $('oCm').innerHTML   = cm.toFixed(1)+'<small>cm</small>';
+  $('oEdpi').textContent = Math.round(c.dpi*c.sens);
+  $('oHalf').innerHTML = (cm/2).toFixed(1)+'<small>cm</small>';
+  $('oPer').innerHTML  = per.toFixed(4)+'<small>°</small>';
+  $('oPx').innerHTML   = (per*pxPerDeg).toFixed(2)+'<small>px</small>';
+  $('oFov').innerHTML  = (hf*R2D).toFixed(1)+' / '+(G.vFov*R2D).toFixed(1)+'<small>°</small>';
+  /* 拉伸的效果两个游戏**结论相反**，必须分开写，别照搬。
+       CS2（Hor+）：4:3 渲染时水平 FOV 真的缩到 90°，拉伸铺满把画面横向拉宽
+                    ${(c.display/c.aspect)} 倍 —— 牺牲视野换模型变大，这是它有意义的原因。
+       无畏契约   ：FOV 恒定，4:3 先被压窄 1.333×、再被显示器拉回 1.333×，正好抵消，
+                    净效果和 16:9 原生一模一样，只是像素更少。拉伸是白拉；
+                    黑边反而把模型压细。 */
+  const AN = {1.33333:'4:3', 1.6:'16:10', 1.77778:'16:9', 2.37037:'21:9'};
+  const nat = AN[c.aspect]||c.aspect;
+  if (G.fovMode === 'hor+'){
+    const sf = c.stretch ? c.display/c.aspect : 1;
+    $('hintStretch').innerHTML = c.stretch
+      ? (sf>1.001 ? `画面横向拉宽 <b>${sf.toFixed(3)}×</b>，敌人看起来更宽` :
+         sf<0.999 ? `⚠ 渲染比例比显示器还宽，会被压扁 ${sf.toFixed(3)}×` : '与原生一致，无拉伸效果')
+      : `${nat} 原生，方形像素`;
+    $('hintDisplay').textContent = `拉伸倍数 = 显示器 ÷ 渲染 = ${sf.toFixed(3)}×，与浏览器窗口无关`;
+    $('hintFov').innerHTML = `CS2 是 <b>Hor+</b>：垂直 FOV 恒定 73.7°，水平随比例变。换 4:3 水平视野从 106.3° 缩到 90°，<b>是真的看得更窄</b>；拉伸铺满把模型横向拉宽补回来 —— 牺牲视野换模型变大。`;
+  } else {
+    const wide = (c.stretch ? c.display : c.aspect) / G.baseA;   // 相对 16:9 的横向倍率
+    $('hintStretch').innerHTML = c.stretch
+      ? (Math.abs(wide-1) < 0.002
+          ? `和 16:9 原生画面<b>完全一致</b>，只是渲染像素更少 —— 帧数更高，但不会把模型拉宽`
+          : `相对 16:9 横向 <b>${wide.toFixed(3)}×</b>（由显示器比例决定，渲染比例被抵消掉了）`)
+      : (Math.abs(wide-1) < 0.002
+          ? `${nat} 原生，方形像素`
+          : `⚠ 黑边模式下画面被压窄到 <b>${wide.toFixed(3)}×</b>，模型比 16:9 更细`);
+    $('hintDisplay').textContent = c.stretch
+      ? `拉伸铺满时横向倍率只由显示器比例决定：${(c.display/G.baseA).toFixed(3)}×`
+      : '黑边模式下这一项不影响画面';
+    $('hintFov').innerHTML = `无畏契约的 FOV <b>不随画面比例变化</b>（这点和 CS 相反）：始终是 103°×70.5°，换比例只是把同一幅画面压扁或拉开。所以这里的 4:3 <b>不会</b>像 CS 那样牺牲视野换模型变大 —— 拉伸铺满等于白拉，黑边反而把模型压细。`;
+  }
+
+  const half = cm/2;
+  let s = `进游戏贴墙转半圈（180°），鼠标横向移动应约 <b>${half.toFixed(1)} cm</b>；对不上说明 DPI 或灵敏度填错了。`;
+  $('sanity').innerHTML = s;
+  drawXhPreview();
+
+  // 模式切换
+  const ab = c.mode==='ab', nb = c.mode==='new';
+  $('abBox').classList.toggle('hidden', !ab);
+  $('newBox').classList.toggle('hidden', !nb);
+  $('hintA').textContent = cm360(c.dpi,c.sensA).toFixed(1)+' cm/360';
+  $('hintB').textContent = cm360(c.dpi,c.sensB).toFixed(1)+' cm/360';
+  let candErr = false;
+  if (nb){
+    const custom = c.candMode==='custom';
+    $('oCand').readOnly = !custom;
+    $('labCand').textContent = custom ? '候选灵敏度（2–4 个）' : '推出的候选值';
+    $('iGrip').parentElement.classList.toggle('hidden', custom);
+    if (custom){
+      const v = parseCands($('oCand').value);   // 用户正在输入，不要覆盖它
+      candErr = !v;
+      $('oCandCm').innerHTML = v
+        ? v.slice().reverse().map(x=>cm360(c.dpi,x).toFixed(0)).join(' / ') + ' cm/360'
+        : '<span style="color:var(--bad)">请填 2–4 个 0.05–20 之间的数，逗号分隔</span>';
+    } else {
+      const cd = newbieCandidates();
+      $('oCand').value = cd.map(x=>x.sens).join('   ');
+      $('oCandCm').textContent = cd.map(x=>x.cm.toFixed(0)).join(' / ') + ' cm/360';
+    }
+  }
+  $('btnStart').disabled = candErr;
+  $('btnStart').textContent = ab ? '开始对比测试' : nb ? '开始扫描' : '开始测试';
+  renderPhaseCards();
+}
+/** 准星预览：按预览画布高度与游戏分辨率的比例缩放，和实测时用同一个渲染函数 */
+function drawXhPreview(){
+  const cv = $('xhPrev'), g = cv.getContext('2d');
+  g.fillStyle = '#0a0d12'; g.fillRect(0,0,cv.width,cv.height);
+  g.strokeStyle = '#1b2430'; g.lineWidth = 1;
+  for (let i=25;i<cv.width;i+=25){
+    g.beginPath(); g.moveTo(i,0); g.lineTo(i,cv.height); g.moveTo(0,i); g.lineTo(cv.width,i); g.stroke();
+  }
+  drawCrosshair(g, cv.width/2, cv.height/2, 1, null);
+}
+
+/* ─────────── 测试阶段 ─────────── */
+/* 停止条件按"有效试次数"而非时间：本测试的统计效力取决于采到多少次有效甩枪，
+   跟花了多久无关。固定时长会让手快的人过采样、手慢的人欠采样。
+   主测阶段用"精度停止"——采到置信区间足够窄为止，所有人拿到同等可信的结论。
+   注意必须按精度停，不能按"显著性"停：后者是经典的序贯检验陷阱，会大幅抬高假阳性。*/
+const PHASES = [
+  // 热身数据必须保留。人在十几次甩枪内就会用视觉反馈重新校准到当前灵敏度，
+  // 所以"习惯匹配"的信号只存在于最开始那几次里 —— 把热身丢掉等于丢掉唯一的信号，
+  // 结果就是不管设成什么灵敏度都会测出"匹配"。这段用来算适应曲线，不进主偏差估计。
+  {id:'warmup', name:'热身',     tip:'前几次就开始记录，正常打',  kind:'flick', a0:8,   a1:45,  keep:true, short:'适应期采样 · 用于判断你是否已习惯当前灵敏度',
+   desc:'先活动开。这一段的数据会全部丢弃，随便打。',
+   stop:{trials:15, maxMs:45000}},
+  {id:'main',   name:'甩枪测试', tip:'尽快甩过去，别刻意求稳', kind:'flick', a0:8,   a1:45,  keep:true, short:'大角度弹道甩枪 · 主指标来源',
+   desc:'核心阶段。目标出现后<b>果断甩过去点击</b>，打不中也没关系——我们测的是你第一次停枪的位置。<br>刻意放慢求稳会让这次数据作废。',
+   // 下限 70 不是随便定的：headline 偏差值 30 次就收敛了，但分方向图要每个方向
+   // 有足够样本才有意义。70 次 → 每方向约 17 次，刚好够用。
+   stop:{minTrials:70, ci:0.025, maxMs:200000}},
+  // 跟枪：闭环连续控制。和甩枪的开环弹道控制是两种能力，最优灵敏度通常不同。
+  // 分成多段短跑而不是一段长跑：统计比较需要多个独立样本，一段 14 秒只能产出 1 个数，
+  // 任何检验都做不了。每段随机相位，段与段之间相互独立。
+  {id:'track',  name:'跟枪测试', tip:'把准星压在移动目标上',   kind:'track', keep:true, tgt:1.2, runMs:6000, short:'快速移动靶 · 33°/s',
+   desc:'目标会<b>持续移动</b>，把准星压在它身上别掉。<br>不用点击，全程自动计分 —— 测的是连续跟踪能力，和甩枪是两回事。<br>分 5 段，每段 6 秒。',
+   stop:{trials:5, maxMs:70000}},
+  // 微控：靶极慢漂移（约 2°/s）+ 小靶（0.4°）。
+  // 早期版本用的是静止靶"保持不动"，但那个任务可以脱手刷分 —— 手离开鼠标反而得满分，
+  // 测的其实是"握得有多用力"。改成漂移后松手 0.2 秒内就脱靶，参与度由任务本身强制。
+  {id:'hold',   name:'微控测试', tip:'靶在缓慢漂移，跟住它',   kind:'hold',  keep:true, tgt:0.4, runMs:5000, short:'慢速漂移靶 · 2°/s · 靶 0.4°',
+   desc:'小靶会<b>极慢地漂移</b>，把准星始终压在它身上。<br>速度只有跟枪测试的十六分之一，考验的是<b>精细控制</b> —— 高灵敏度在这个尺度上最吃亏。<br>4 段 × 5 秒。',
+   stop:{trials:4, maxMs:70000}},
+  // 必须命中才结束：打不中也进下一次时人根本没有修正动机，实测修正次数掉到 0.06 完全失去信息。
+  {id:'correct',name:'修正测试', tip:'必须打中才进下一个',     kind:'correct', a0:6, a1:28, keep:true, tgt:0.9, short:'必须命中才过 · 数修正次数',
+   desc:'这一段<b>必须命中才会进入下一个目标</b>，打偏了就接着修正。<br>测的是停枪之后要来回拉几次才压得上去 —— 灵敏度偏高时这个数会明显变大。',
+   stop:{trials:18, maxMs:100000}},
+  // 靶半径 0.45°（约等于 20 米外的头），角度 3–12°：移动量必须远大于靶半径，
+  // 否则就是"靶比要走的距离还大"，不用动就命中 —— 实测命中率会顶到 93% 完全失去区分度。
+  /* 波次小靶：同屏 2–3 个小靶，全部打掉才进下一波。
+     注意这里<b>测不了落点比值</b> —— 多靶同屏时无法知道玩家瞄的是哪一个，
+     事后按"离落点最近"去归属会把比值人为拉向 1。所以本阶段只出清屏时间和命中率。 */
+  {id:'wave',   name:'波次小靶', tip:'打光一波才出下一波',     kind:'wave', a0:6, a1:26, keep:true, tgt:0.5,
+   waveMin:2, waveMax:3, short:'同屏 2–3 个小靶 · 靶 0.5° · 测清屏时间',
+   desc:'每波同时出现 <b>2–3 个小靶</b>，全部打掉才会出下一波。<br>考验的是连续切换目标的速度，测的是清屏时间和命中率。',
+   stop:{trials:12, maxMs:100000}},
+  /* 压枪：CS 专属。这是唯一一个**不允许抬鼠标复位**的动作 —— 一梭子必须一路拉到底，
+     所以它是唯一会暴露"低灵敏度物理上限"的阶段。其余阶段都能中途重新握位，低灵敏度从不吃亏。
+     后坐力补偿要走的物理距离 = 角度 ÷ (每计数转角 × 灵敏度 × DPI)，和 cm/360 严格成正比，
+     所以这一项确实是灵敏度的函数，不是纯枪法。 */
+  {id:'spray',  name:'压枪测试', tip:'按住左键，把准星压住不动', kind:'spray', keep:true, tgt:0.9,
+   runMs:3000, games:['cs2'], short:'持续后坐力 · 30 发/段 · 测 RMS 偏离',
+   desc:()=>`按住<b>左键不放</b>开火，视角会被后坐力持续往上推，你要用鼠标把它压回来、让准星一直待在靶上。<br>`
+       +`按你现在的设置，这一梭子需要向下拉约 <b>${(SPRAY_RISE/360*cm360(cfg.dpi,cfg.sens)).toFixed(1)} cm</b>。<br>`
+       +`纵向抬升<b>固定</b>（这才是要测的持续下拉能力），横向摆动<b>每段随机</b>——背不住，只能看着补。<br>`
+       +`5 段，每段 30 发约 3 秒。`,
+   stop:{trials:5, maxMs:80000}},
+  {id:'turn',   name:'转身测试', tip:'目标在身后，跟着箭头转', kind:'turn',  a0:150, a1:180, keep:true, short:'150–180° 转身 · 查行程够不够',
+   desc:'目标在你身后，屏幕边缘的箭头会指方向。转过去打掉它，测的是转身行程是否够用。',
+   stop:{trials:8, maxMs:40000}},
+];
+/* A/B 对比模式的阶段表：ABABAB 交替分块。
+   顺序测（先跑完 A 再跑完 B）会把灵敏度和疲劳、热身、行为漂移混在一起 —— 实测中
+   光是点击时机从 120ms 变到 4ms 就能让命中率差一倍，而那跟灵敏度无关。 */
+function abPhases(sA, sB){
+  const cmA = cm360(cfg.dpi,sA).toFixed(1), cmB = cm360(cfg.dpi,sB).toFixed(1);
+  const ph = [{
+    id:'warmup', name:'热身', tip:'不计入结果', kind:'flick', a0:8, a1:45, keep:false, sens:sA,
+    desc:`先活动开，这一段用灵敏度 A = ${sA}。数据全部丢弃。`,
+    stop:{trials:12, maxMs:40000}
+  }];
+  const ROUNDS = 2;
+  for (let i=0;i<ROUNDS;i++){
+    for (const [k,s,cm] of [['A',sA,cmA],['B',sB,cmB]]){
+      const tag = `${k}${i}`, head = `灵敏度 ${k} · ${s}`;
+      // 每次切换灵敏度后的第一个子阶段是甩枪，settle 只加在这里
+      ph.push({id:tag+'f', ab:k, sens:s, name:head+' · 甩枪', tip:`${k} = ${s} (${cm} cm/360)`,
+        kind:'flick', a0:8, a1:45, keep:true, settle:4, tgt:1.4,
+        desc:`切换到<b>灵敏度 ${k} = ${s}</b>（${cm} cm/360）<br>第 ${i+1}/${ROUNDS} 轮 · 甩枪 · 前 4 次用于适应，不计入结果`,
+        stop:{trials:26, maxMs:70000}});
+      // 每块 4 段：两轮共 8 段，才够做统计比较。1 段/块的话任何检验都做不了。
+      ph.push({id:tag+'t', ab:k, sens:s, name:head+' · 跟枪', tip:'把准星压在移动目标上',
+        kind:'track', keep:true, tgt:1.2, runMs:6000, short:'快速移动靶 · 33°/s', quiet:true,
+        desc:`还是<b>灵敏度 ${k}</b>，换成<b>跟枪</b>：把准星压在移动目标上别掉，不用点击。4 段 × 6 秒。`,
+        stop:{trials:4, maxMs:45000}});
+      ph.push({id:tag+'h', ab:k, sens:s, name:head+' · 微控', tip:'靶在缓慢漂移，跟住它',
+        kind:'hold', keep:true, tgt:0.3, runMs:5000, quiet:true,
+        desc:`还是<b>灵敏度 ${k}</b>，换成<b>微控</b>：小靶会极慢漂移，把准星压住跟着它。4 段 × 5 秒。`,
+        stop:{trials:4, maxMs:50000}});
+      ph.push({id:tag+'c', ab:k, sens:s, name:head+' · 修正', tip:'必须打中才进下一个',
+        kind:'correct', a0:6, a1:28, keep:true, tgt:0.9, short:'必须命中才过 · 数修正次数', quiet:true,
+        desc:`还是<b>灵敏度 ${k}</b>，换成<b>修正</b>：必须命中才进入下一个目标。`,
+        stop:{trials:8, maxMs:50000}});
+    }
+  }
+  return ph;
+}
+/* ── 新手模式：先按握法推出起点范围，再扫描候选值 ──
+   握法区间是社区经验范围，不是测出来的，而且它衡量的是手能舒服走多远（生理量），
+   所以**两个游戏共用同一组数**，没有按游戏调过。
+   但职业选手的分布确实不同：CS 是 30–45 cm/360，无畏契约的 eDPI 常见 200–400、
+   换算过来是 33–65，整体慢得多 —— 在无畏契约里靠近手臂端才是常态，
+   自动候选值算出来会偏快。这是已知的、故意没有硬调的（硬调就是拟合），
+   觉得不合适用「自定义候选值」直接填。扫描最终是按实测表现选的，
+   起点偏一点不会让结论错，只是候选可能没覆盖到最优区间。
+   曾经还叠过一层"180° 行程不能超过鼠标垫"的约束，但那个前提是错的 ——
+   抬鼠标复位是低灵敏度玩法的常态，没人要求一把转完 180°。 */
+const GRIP_RANGE = {arm:[40,55], hybrid:[30,42], wrist:[22,32]};
+/** 解析自定义候选值：逗号/空格/顿号分隔，2–4 个，去重排序。返回 null 表示不合法 */
+function parseCands(str){
+  const v = String(str||'').split(/[,，、\s]+/).map(x=>parseFloat(x))
+    .filter(x=>isFinite(x) && x>=G.sensMin && x<=G.sensMax);
+  const dec = G.id==='cs2' ? 3 : 4;
+  const uniq = [...new Set(v.map(x=>+x.toFixed(dec)))].sort((a,b)=>a-b);
+  return (uniq.length>=2 && uniq.length<=4) ? uniq : null;
+}
+function newbieCandidates(){
+  if (cfg.candMode==='custom'){
+    const v = parseCands(cfg.candList);
+    // 灵敏度从小到大 = cm/360 从大到小，翻转一下让候选按 cm/360 升序排列
+    if (v) return v.slice().reverse().map(sens => ({sens, cm: cm360(cfg.dpi, sens)}));
+  }
+  const [lo,hi] = GRIP_RANGE[cfg.grip] || GRIP_RANGE.hybrid;
+  // 几何间隔取 3 个候选：灵敏度的感知差异是比例性的，等比比等差合理
+  const cms = [lo, Math.sqrt(lo*hi), hi];
+  const dec = G.id==='cs2' ? 3 : 4;
+  return cms.map(cm => ({cm, sens: +sensFromCm(cfg.dpi, cm).toFixed(dec)}));
+}
+function sweepPhases(cands){
+  const L = cands.map((_,i)=>'C'+(i+1));
+  const ph = [{
+    id:'warmup', name:'热身', tip:'不计入结果', kind:'flick', a0:8, a1:45, keep:false, sens:cands[1].sens,
+    desc:`先活动开，用中间那个候选值。数据全部丢弃。<br>这一段也让你先感受一下大致的手感。`,
+    stop:{trials:12, maxMs:40000}
+  }];
+  for (let r=0;r<2;r++){
+    // 第二轮反向，抵消顺序和疲劳带来的系统性偏差
+    const idx = cands.map((_,i)=>i);
+    const order = r===0 ? idx : idx.slice().reverse();
+    for (const ci of order){
+      const c = cands[ci], k = L[ci], cm = c.cm.toFixed(0);
+      const head = `候选 ${k} · ${c.sens}`;
+      ph.push({id:k+r+'f', ab:k, sens:c.sens, name:head+' · 甩枪', tip:`${k} = ${c.sens} (${cm} cm/360)`,
+        kind:'flick', a0:8, a1:45, keep:true, settle:4, tgt:1.4,
+        desc:`切换到<b>候选 ${k} = ${c.sens}</b>（${cm} cm/360）<br>第 ${r+1}/2 轮 · 甩枪 · 前 4 次用于适应`,
+        stop:{trials:18, maxMs:60000}});
+      ph.push({id:k+r+'t', ab:k, sens:c.sens, name:head+' · 跟枪', tip:'把准星压在移动目标上',
+        kind:'track', keep:true, tgt:1.2, runMs:6000, short:'快速移动靶 · 33°/s', quiet:true,
+        desc:`还是<b>候选 ${k}</b>，换成<b>跟枪</b>：把准星压在移动目标上别掉。3 段 × 6 秒。`,
+        stop:{trials:3, maxMs:35000}});
+      ph.push({id:k+r+'h', ab:k, sens:c.sens, name:head+' · 微控', tip:'靶在缓慢漂移，跟住它',
+        kind:'hold', keep:true, tgt:0.4, runMs:5000, quiet:true,
+        desc:`还是<b>候选 ${k}</b>，换成<b>微控</b>：小靶会极慢漂移，把准星压住跟着它。3 段 × 5 秒。`,
+        stop:{trials:3, maxMs:40000}});
+    }
+  }
+  return ph;
+}
+let SWEEP_CANDS = null;
+/** 阶段可以用 games:['cs2'] 限定只在某个游戏出现。没标 games 的对两个游戏都跑。 */
+const forGame = list => list.filter(p => !p.games || p.games.indexOf(G.id) >= 0);
+function activePhases(){
+  if (cfg.mode==='ab')  return abPhases(cfg.sensA, cfg.sensB);
+  if (cfg.mode==='new'){ SWEEP_CANDS = newbieCandidates(); return sweepPhases(SWEEP_CANDS); }
+  return forGame(PHASES);
+}
+
+(function renderPhases(){
+  const lbl = p => p.stop.trials ? p.stop.trials+' 次' : '≥'+p.stop.minTrials+' 次，至精度达标';
+  $('phz').innerHTML = forGame(PHASES).map(p=>
+    `<div><div class="n">${p.name}</div><div class="d">${lbl(p)}${p.keep?'':' · 不计分'}</div></div>`
+  ).join('') + `<div><div class="n" style="color:var(--acc)">合计</div><div class="d">约 3–5 分钟</div></div>`;
+})();
+function renderPhaseCards(){
+  if (cfg.mode==='new'){
+    const cn = newbieCandidates().length;
+    $('phz').innerHTML =
+      `<div><div class="n">热身</div><div class="d">12 次 · 不计分</div></div>` +
+      `<div><div class="n">${cn} 档交替，两轮反向</div><div class="d">抵消顺序和疲劳偏差</div></div>` +
+      `<div><div class="n">每档</div><div class="d">甩枪 18 + 跟枪 3 段 + 微控 3 段</div></div>` +
+      `<div><div class="n" style="color:var(--acc)">合计</div><div class="d">约 ${Math.round(cn*1.8)} 分钟</div></div>`;
+    return;
+  }
+  const ab = cfg.mode==='ab';
+  if (!ab){
+    const lbl = p => p.stop.trials ? p.stop.trials+' 次' : '≥'+p.stop.minTrials+' 次，至精度达标';
+    $('phz').innerHTML = forGame(PHASES).map((p,i)=>
+      `<div><div class="n">${i+1}. ${p.name}</div><div class="d">${p.short||''}</div>`
+      + `<div class="d" style="margin-top:3px;color:var(--dim)">${lbl(p)}${p.keep?'':' · 不计分'}</div></div>`
+    ).join('') + `<div><div class="n" style="color:var(--acc)">合计</div><div class="d">约 4 分钟</div></div>`;
+  } else {
+    const cn = newbieCandidates().length;
+    $('phz').innerHTML =
+      `<div><div class="n">热身</div><div class="d">12 次 · 不计分</div></div>` +
+      `<div><div class="n">A → B → A → B → A → B</div><div class="d">每块 24 次，前 5 次丢弃</div></div>` +
+      `<div><div class="n">每个灵敏度有效样本</div><div class="d">约 57 次</div></div>` +
+      `<div><div class="n" style="color:var(--acc)">合计</div><div class="d">约 3 分钟</div></div>`;
+  }
+}
+
+/* ═══════════ 向量 / 相机数学 ═══════════ */
+const dot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+function dirFromAngles(az,el){ const ce=Math.cos(el); return [ce*Math.sin(az), Math.sin(el), ce*Math.cos(az)]; }
+/** 相机正交基：f 前, r 右, u 上 */
+function camBasis(yaw,pitch){
+  const sy=Math.sin(yaw),cy=Math.cos(yaw),sp=Math.sin(pitch),cp=Math.cos(pitch);
+  return { f:[cp*sy,sp,cp*cy], r:[cy,0,-sy], u:[-sp*sy,cp,-sp*cy] };
+}
+/** 把方向 d 表达为 basis 处切平面上的向量（弧度，长度=夹角） */
+function tangentOf(d,B){
+  const a=dot(d,B.r), b=dot(d,B.u), c=clamp(dot(d,B.f),-1,1);
+  const th=Math.acos(c), m=Math.hypot(a,b);
+  return m<1e-9 ? [0,0] : [a/m*th, b/m*th];
+}
+/** 从方向 D0 沿切平面方向 phi 旋转 ang 弧度 */
+function rotateFrom(B,ang,phi){
+  const ux=Math.cos(phi), uy=Math.sin(phi), s=Math.sin(ang), c=Math.cos(ang);
+  return [0,1,2].map(i => B.f[i]*c + (B.r[i]*ux+B.u[i]*uy)*s);
+}
+
+/* ═══════════ 输入：指针锁 + 原始移动 ═══════════ */
+const Input = {
+  dx:0, dy:0, events:0, gaps:[], prevTs:0, minGap:1e9, lastEventTs:0,
+  simBuf:{x:0,y:0,t:0},
+  bind(){
+    const ev = ('onpointerrawupdate' in window) ? 'pointerrawupdate' : 'pointermove';
+    document.addEventListener(ev, this.onMove.bind(this));
+    document.addEventListener('mousedown', e=>{ if(e.button===0) Test.onClick(); });
+    document.addEventListener('mouseup',   e=>{ if(e.button===0) Test.onRelease(); });
+  },
+  onMove(e){
+    if (document.pointerLockElement !== $('cv')) return;
+    let list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+    if (!list || !list.length) list = [e];
+    for (const ev of list){
+      this.dx += ev.movementX; this.dy += ev.movementY;
+      // 只统计"确实有位移"的相邻事件间隔。用总事件数÷总时长会被试次间隙和
+      // 静止时段稀释，1000Hz 的鼠标能被测成 700Hz 并误报"回报率异常"。
+      if (this.prevTs && (ev.movementX || ev.movementY)){
+        const dt = ev.timeStamp - this.prevTs;
+        if (dt > 0 && dt < 50 && this.gaps.length < 20000){
+          this.gaps.push(dt);
+          if (dt < this.minGap) this.minGap = dt;   // 时间戳分辨率下限
+        }
+      }
+      this.prevTs = ev.timeStamp;
+    }
+    this.events += list.length;
+    this.lastEventTs = performance.now();   // 供帧循环算"输入滞留了多久才被渲染"
+  },
+  /** 取出累积位移；sim>0 时按目标回报率降采样（只能往低模拟） */
+  take(now){
+    if (!cfg.sim) { const r=[this.dx,this.dy]; this.dx=this.dy=0; return r; }
+    const s = this.simBuf;
+    s.x += this.dx; s.y += this.dy; this.dx=this.dy=0;
+    const iv = 1000/cfg.sim;
+    if (now - s.t >= iv){ s.t = now; const r=[s.x,s.y]; s.x=s.y=0; return r; }
+    return [0,0];
+  },
+  /** 运动期间事件间隔的中位数 → 回报率。浏览器时间戳精度有限，
+      8000Hz（0.125ms 间隔）这种会测不准，所以只做下限告警不做上限判断。*/
+  measuredHz(){
+    if (this.gaps.length < 200) return 0;
+    const s = [...this.gaps].sort((a,b)=>a-b);
+    const med = s[Math.floor(s.length/2)];
+    return med > 0 ? Math.round(1000/med) : 0;
+  },
+  /** 浏览器事件时间戳的分辨率。若它 ≥1ms，那么任何 ≥1000Hz 的鼠标都会被测成 1000Hz，
+      读数不是测量结果而是时钟量化的产物 —— 必须如实标注，不能假装测准了。 */
+  tsResolution(){ return this.minGap < 1e9 ? this.minGap : 0; },
+  reset(){ this.dx=this.dy=0; this.events=0; this.gaps=[]; this.prevTs=0; this.minGap=1e9; this.simBuf={x:0,y:0,t:0}; }
+};
+
+/** 请求指针锁；优先 unadjustedMovement（绕过系统指针加速） */
+let LOCK_ERR = '';
+async function requestLock(el){
+  LOCK_ERR = '';
+  // 首次调用必须在用户手势的同步阶段发起：await 之后 user activation 就失效了，
+  // 那时再调回退路径必然失败。所以这里先同步拿到 promise，再 await。
+  let p;
+  try{ p = el.requestPointerLock({unadjustedMovement:true}); }
+  catch(err){ LOCK_ERR = err.name+'：'+err.message; return 'failed'; }
+
+  if (!(p && p.then)) return 'unknown';     // 老浏览器忽略参数直接锁定，无法确认模式
+
+  try{ await p; return 'raw'; }
+  catch(err){
+    // 只有"不支持 unadjustedMovement"才值得退回普通模式；其它错误退了也没用
+    if (err && err.name === 'NotSupportedError'){
+      try{ const q = el.requestPointerLock(); if (q && q.then) await q; return 'adjusted'; }
+      catch(e2){ LOCK_ERR = e2.name+'：'+e2.message; return 'failed'; }
+    }
+    LOCK_ERR = (err && err.name ? err.name+'：'+err.message : String(err));
+    return 'failed';
+  }
+}
+const EMBED_MSG = `这个页面<b>不在一个普通的顶层浏览器窗口里</b>（编辑器预览面板、侧边栏、嵌入式视图都算），
+  这种上下文不允许锁定鼠标。<br><br>解决办法：<b>直接双击 HTML 文件</b>，或把完整路径粘进 Chrome 地址栏，在独立窗口里打开。`;
+
+/** 判断是否属于"非顶层文档"这类环境问题 —— 注意 window.top 检测抓不到全部情况，
+    预览面板里 self===top 但照样报 WrongDocumentError，所以要同时看错误名。 */
+function isEmbedded(){
+  return (window.self !== window.top) || /WrongDocument|InvalidState/.test(LOCK_ERR);
+}
+/** 锁定失败时给出针对性的排查建议 */
+function lockHint(){
+  if (isEmbedded()) return EMBED_MSG;
+  if (!/Chrome|Chromium|Edg/.test(navigator.userAgent))
+    return '你的浏览器可能不支持指针锁定。请改用 <b>Chrome</b> 或 <b>Edge</b>。';
+  if (!document.hasFocus())
+    return '当前窗口不是焦点窗口。点一下页面再试。';
+  if (/SecurityError/.test(LOCK_ERR) && location.protocol === 'file:')
+    return `<code>file://</code> 下被安全策略拦了。在这个 HTML 文件<b>所在的文件夹</b>里开个命令行，执行：<br>
+      <code style="font-family:var(--mono);color:var(--acc2)">python -m http.server 8000</code><br>
+      然后浏览器访问 <code style="font-family:var(--mono);color:var(--acc2)">http://localhost:8000/</code>，点开这个文件。`;
+  return '如果刚按过 <b>Esc</b>，等 1 秒再点（Chrome 对再次锁定有冷却）。';
+}
+/** 加载时静默探测：WrongDocumentError 在用户手势检查之前抛出，
+    所以不需要真实点击就能提前发现环境不支持。 */
+function probeLock(){
+  try{
+    const p = $('cv').requestPointerLock({unadjustedMovement:true});
+    if (!p || !p.then) return;
+    p.then(()=>{ if (document.pointerLockElement) document.exitPointerLock(); })
+     .catch(err=>{
+       if (err && /WrongDocument|InvalidState/.test(err.name)){
+         $('compatWarn').classList.remove('hidden');
+         $('compatWarn').innerHTML = `<b>鼠标锁定在当前环境下不可用。</b><br>${EMBED_MSG}
+           <br><br><span style="font-family:var(--mono);font-size:12px;color:var(--dim2)">${err.name}: ${err.message}</span>`;
+       }
+     });
+  }catch(e){}
+}
+
+/* ═══════════ 场景渲染 ═══════════ */
+const Scene = {
+  cv:null, ctx:null, W:0, H:0, dpr:1, seg:[], proj:{},
+  init(){
+    this.cv = $('cv'); this.ctx = this.cv.getContext('2d', {alpha:false});
+    this.buildRoom(); this.resize();
+    window.addEventListener('resize', ()=>this.resize());
+  },
+  buildRoom(){
+    // 简单房间：地面 + 四面墙的网格线，提供运动视觉参照
+    const S=[], X=9, Z=9, FL=-1.6, CE=2.4, st=1.5;
+    for(let x=-X;x<=X;x+=st) S.push([[x,FL,-Z],[x,FL,Z]]);
+    for(let z=-Z;z<=Z;z+=st) S.push([[-X,FL,z],[X,FL,z]]);
+    for(const z of [-Z,Z]){
+      for(let x=-X;x<=X;x+=st) S.push([[x,FL,z],[x,CE,z]]);
+      for(let y=FL;y<=CE;y+=1)  S.push([[-X,y,z],[X,y,z]]);
+    }
+    for(const x of [-X,X]){
+      for(let z=-Z;z<=Z;z+=st) S.push([[x,FL,z],[x,CE,z]]);
+      for(let y=FL;y<=CE;y+=1)  S.push([[x,y,-Z],[x,y,Z]]);
+    }
+    this.seg = S;
+  },
+  resize(){
+    this.dpr = Math.min(window.devicePixelRatio||1, 2);
+    this.W = this.cv.clientWidth; this.H = this.cv.clientHeight;
+    this.cv.width = Math.round(this.W*this.dpr);
+    this.cv.height= Math.round(this.H*this.dpr);
+    this.ctx.setTransform(this.dpr,0,0,this.dpr,0,0);
+    /* 虚拟屏宽度，以"高度 = 1"为单位：拉伸时铺满显示器，否则就是渲染比例本身。
+       关键：拉伸倍数必须由<显示器比例>决定，不能拿浏览器窗口宽度当拉伸目标 ——
+       否则窗口一变形拉伸倍数就跟着变（实测 1200×800 窗口只剩 1.125 倍，
+       1000×900 窗口甚至变成 0.833 倍、把画面压扁）。
+       正确关系：fx/fy 恒等于 显示器比例 ÷ 渲染比例。 */
+    const ra = cfg.aspect;
+    const vw = cfg.stretch ? cfg.display : ra;
+    const s  = Math.min(this.W/vw, this.H);        // 等比缩放塞进画布，多余部分留黑边
+    this.proj = {
+      cx:this.W/2, cy:this.H/2,
+      fx:(vw/2)/Math.tan(hFovOf(ra)/2)*s,
+      fy:0.5/Math.tan(G.vFov/2)*s,
+      vpW:vw*s, vpH:s
+    };
+  },
+  project(v,B){
+    const zc = dot(v,B.f);
+    if (zc <= 0.02) return null;
+    return [this.proj.cx + dot(v,B.r)/zc*this.proj.fx,
+            this.proj.cy - dot(v,B.u)/zc*this.proj.fy, zc];
+  },
+  draw(B, targetIn, feedback){
+    const g=this.ctx, P=this.proj;
+    g.fillStyle='#000'; g.fillRect(0,0,this.W,this.H);
+    // 场景必须裁剪到视口内。原来先画黑边再画场景，内容会盖到黑边上。
+    const vx=(this.W-P.vpW)/2, vy=(this.H-P.vpH)/2;
+    g.save();
+    g.beginPath(); g.rect(vx,vy,P.vpW,P.vpH); g.clip();
+    g.fillStyle='#0b0e13'; g.fillRect(vx,vy,P.vpW,P.vpH);
+    // 房间网格
+    g.strokeStyle='#232c38'; g.lineWidth=1; g.beginPath();
+    for (const s of this.seg){
+      let a=this.project(s[0],B), b=this.project(s[1],B);
+      if (!a && !b) continue;
+      if (!a || !b){                              // 近平面裁剪
+        const [p,q] = a ? [s[0],s[1]] : [s[1],s[0]];
+        const zp=dot(p,B.f), zq=dot(q,B.f), t=clamp((0.03-zp)/(zq-zp),0,1);
+        const m=[0,1,2].map(i=>p[i]+(q[i]-p[i])*t);
+        const c=this.project(m,B); if(!c) continue;
+        a = a||c; b = b||c;
+      }
+      g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]);
+    }
+    g.stroke();
+
+    // 目标（拉伸模式下横向变宽 —— 和游戏里一致）。targetIn 可以是单个或数组（波次）
+    for (const target of (Array.isArray(targetIn) ? targetIn : (targetIn ? [targetIn] : []))){
+      const dist=12, r=dist*Math.tan(target.rad || cfg.tgt*D2R);
+      const wp=target.dir.map(c=>c*dist);
+      const p=this.project(wp,B);
+      if (p){
+        const rx=P.fx*r/p[2], ry=P.fy*r/p[2];
+        g.save(); g.translate(p[0],p[1]); g.scale(rx,ry);
+        g.beginPath(); g.arc(0,0,1,0,7); g.restore();
+        g.fillStyle = feedback==='hit' ? 'rgba(63,185,80,.85)'
+                    : feedback==='arm' ? 'rgba(88,166,255,.85)'      // 微控测试：已压在靶上、正在计时
+                    : 'rgba(240,136,62,.82)';
+        g.fill();
+        g.strokeStyle='rgba(255,255,255,.5)'; g.lineWidth=1.5; g.stroke();
+      } else {
+        this.arrow(target.dir,B);                 // 目标在视野外
+      }
+      // 在屏幕外但 z>0 的情况也画箭头
+      if (p && (p[0]<0||p[0]>this.W||p[1]<0||p[1]>this.H)) this.arrow(target.dir,B);
+    }
+    g.restore();
+    this.crosshair(feedback);      // 准星恒在画布中心，不受裁剪影响
+  },
+  arrow(dir,B){
+    const g=this.ctx, t=tangentOf(dir,B), m=Math.hypot(t[0],t[1]);
+    if (m<1e-6) return;
+    const ux=t[0]/m, uy=-t[1]/m;
+    const R=Math.min(this.W,this.H)*0.30;
+    const x=this.W/2+ux*R, y=this.H/2+uy*R, a=Math.atan2(uy,ux);
+    g.save(); g.translate(x,y); g.rotate(a);
+    g.fillStyle='rgba(240,136,62,.9)';
+    g.beginPath(); g.moveTo(16,0); g.lineTo(-10,9); g.lineTo(-10,-9); g.closePath(); g.fill();
+    g.restore();
+  },
+  crosshair(fb){ drawCrosshair(this.ctx, this.W/2, this.H/2, this.H/cfg.resY, fb); }
+};
+
+/* ═══════════ 准星子系统 ═══════════
+   两个游戏的准星是**两套毫无共通之处的东西**，各写一份，由 G.xh 派发。
+
+     编码   CS2 = base-57 大整数 + 18 字节位域 + 校验和
+            无畏契约 = 分号分隔的「键;值」明文串，无校验和
+     结构   CS2 = 单组臂           无畏契约 = 内线 + 外线两组独立参数
+     默认值 CS2 = 全部写出         无畏契约 = 只写不同项，全默认就是一个字符 "0"
+     几何   CS2 = size×2、gap+4、size>2 再 +1 一堆怪癖
+            无畏契约 = 参数就是字面像素值，没有任何换算
+
+   把任一边的换算搬到另一边都会画错（CS 那套用到无畏契约上会大一倍）。 */
+
+/** 当前游戏的完整准星对象。分游戏存，切游戏不会互相冲掉。 */
+const xhF = () => cfg.xhFull[G.id];
+
+/* ─────────── CS2：分享代码 ───────────
+   算法与字节布局对照 akiver/csgo-sharecode 实现，并用其 6 组测试向量全部验证通过
+   （解码值正确 + 重新编码能还原出原始代码）。字典缺 I/g/l/0/1 是为了避免视觉混淆。 */
+const XH_DICT = 'ABCDEFGHJKLMNOPQRSTUVWXYZabcdefhijkmnopqrstuvwxyz23456789';
+const XH_DL = BigInt(XH_DICT.length);
+const XH_PRESET = [[250,50,50],[50,250,50],[250,250,50],[50,50,250],[50,250,250]];
+const XH_DEFAULT = {
+  gap:-1, outline:1, red:0, green:255, blue:0, alpha:255,
+  splitDistance:7, followRecoil:false, fixedCrosshairGap:3, color:5,
+  outlineEnabled:true, innerSplitAlpha:1, outerSplitAlpha:0.5, splitSizeRatio:0.3,
+  thickness:1, centerDotEnabled:false, deployedWeaponGapEnabled:false,
+  alphaEnabled:true, tStyleEnabled:false, style:4, length:3
+};
+const xhSum = a => a.reduce((p,v)=>p+v,0);
+const xhI8  = n => (n<<24)>>24;
+
+function xhCodeToBytes(code){
+  const c = code.trim().replace(/CSGO|-/g,'');
+  if (c.length !== 25) throw new Error('代码长度不对，应为 CSGO- 加 5 组 5 位字符');
+  let big = 0n;
+  for (const ch of Array.from(c).reverse()){
+    const i = XH_DICT.indexOf(ch);
+    if (i < 0) throw new Error('包含非法字符「'+ch+'」');
+    big = big*XH_DL + BigInt(i);
+  }
+  const hex = big.toString(16).padStart(36,'0');
+  const b = []; for (let i=0;i<36;i+=2) b.push(parseInt(hex.slice(i,i+2),16));
+  return b;
+}
+function xhBytesToCode(b){
+  const hex = b.map(x=>(x&0xff).toString(16).padStart(2,'0')).join('');
+  let t = BigInt('0x'+hex), s = '';
+  for (let i=0;i<25;i++){ s += XH_DICT[Number(t%XH_DL)]; t = t/XH_DL; }
+  return `CSGO-${s.slice(0,5)}-${s.slice(5,10)}-${s.slice(10,15)}-${s.slice(15,20)}-${s.slice(20,25)}`;
+}
+function csDecode(code){
+  const b = xhCodeToBytes(code);
+  if (b[0] !== xhSum(b.slice(1))%256) throw new Error('校验和不匹配，代码可能抄漏或抄错了');
+  return {
+    gap:xhI8(b[2])/10, outline:b[3]/2, red:b[4], green:b[5], blue:b[6], alpha:b[7],
+    splitDistance:b[8]&7, followRecoil:((b[8]>>4)&8)===8,
+    fixedCrosshairGap:xhI8(b[9])/10, color:b[10]&7, outlineEnabled:(b[10]&8)===8,
+    innerSplitAlpha:(b[10]>>4)/10, outerSplitAlpha:(b[11]&0xf)/10, splitSizeRatio:(b[11]>>4)/10,
+    thickness:b[12]/10, centerDotEnabled:((b[13]>>4)&1)===1,
+    deployedWeaponGapEnabled:((b[13]>>4)&2)===2, alphaEnabled:((b[13]>>4)&4)===4,
+    tStyleEnabled:((b[13]>>4)&8)===8, style:(b[13]&0xf)>>1, length:b[14]/10
+  };
+}
+function csEncode(c){
+  const R = v => Math.round(v);
+  const b = [0, 1,
+    R(c.gap*10)&0xff, R(c.outline*2), c.red, c.green, c.blue, c.alpha,
+    (c.splitDistance&7)|(Number(c.followRecoil)<<7),
+    R(c.fixedCrosshairGap*10)&0xff,
+    (c.color&7)|(Number(c.outlineEnabled)<<3)|(R(c.innerSplitAlpha*10)<<4),
+    R(c.outerSplitAlpha*10)|(R(c.splitSizeRatio*10)<<4),
+    R(c.thickness*10),
+    (c.style<<1)|(Number(c.centerDotEnabled)<<4)|(Number(c.deployedWeaponGapEnabled)<<5)|
+      (Number(c.alphaEnabled)<<6)|(Number(c.tStyleEnabled)<<7),
+    R(c.length*10), 0,0,0];
+  b[0] = xhSum(b)&0xff;
+  return xhBytesToCode(b);
+}
+function csToConVars(c){
+  return [
+    ['cl_crosshairstyle', c.style], ['cl_crosshairsize', c.length],
+    ['cl_crosshairthickness', c.thickness], ['cl_crosshairgap', c.gap],
+    ['cl_crosshair_drawoutline', +c.outlineEnabled], ['cl_crosshair_outlinethickness', c.outline],
+    ['cl_crosshaircolor', c.color], ['cl_crosshaircolor_r', c.red],
+    ['cl_crosshaircolor_g', c.green], ['cl_crosshaircolor_b', c.blue],
+    ['cl_crosshairusealpha', +c.alphaEnabled], ['cl_crosshairalpha', c.alpha],
+    ['cl_crosshairdot', +c.centerDotEnabled], ['cl_crosshair_t', +c.tStyleEnabled],
+    ['cl_crosshairgap_useweaponvalue', +c.deployedWeaponGapEnabled],
+    ['cl_crosshair_recoil', +c.followRecoil], ['cl_fixedcrosshairgap', c.fixedCrosshairGap],
+    ['cl_crosshair_dynamic_splitdist', c.splitDistance],
+    ['cl_crosshair_dynamic_splitalpha_innermod', c.innerSplitAlpha],
+    ['cl_crosshair_dynamic_splitalpha_outermod', c.outerSplitAlpha],
+    ['cl_crosshair_dynamic_maxdist_splitratio', c.splitSizeRatio],
+  ].map(([k,v])=>`${k} ${v}`).join('\n');
+}
+const hex2rgb = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+const rgb2hex = (r,g,b) => '#'+[r,g,b].map(v=>clamp(Math.round(v),0,255).toString(16).padStart(2,'0')).join('');
+
+function csFromUI(){
+  const f = Object.assign({}, XH_DEFAULT, xhF()||{});
+  const [r,g,b] = hex2rgb(cfg.xCol);
+  if (r!==f.red || g!==f.green || b!==f.blue) f.color = 5;   // 手动改过颜色 → 自定义色
+  f.red=r; f.green=g; f.blue=b;
+  f.length = cfg.xSize; f.thickness = cfg.xThick; f.gap = cfg.xGap;
+  f.outlineEnabled = cfg.xOut > 0;
+  if (cfg.xOut > 0) f.outline = cfg.xOut;
+  // 游戏里 cl_crosshairusealpha 0 时 alpha 值照样保存、只是不生效，所以不能把它覆盖成 255，
+  // 否则往返会丢值。改动过才视为启用。
+  if (cfg.xAlpha !== f.alpha) f.alphaEnabled = true;
+  f.alpha = cfg.xAlpha;
+  f.centerDotEnabled = cfg.xDot; f.tStyleEnabled = cfg.xT;
+  return f;
+}
+function csToUI(f){
+  cfg.xhFull.cs2 = f;
+  const rgb = f.color>=0 && f.color<5 ? XH_PRESET[f.color] : [f.red,f.green,f.blue];
+  $('xSize').value  = f.length;
+  $('xThick').value = f.thickness;
+  $('xGap').value   = f.gap;
+  $('xOut').value   = f.outlineEnabled ? f.outline : 0;
+  $('xCol').value   = rgb2hex(rgb[0],rgb[1],rgb[2]);
+  $('xAlpha').value = f.alpha;              // 原样显示，是否生效由 alphaEnabled 决定
+  $('xDot').checked = f.centerDotEnabled;
+  $('xT').checked   = f.tStyleEnabled;
+}
+/* CS2 准星几何严格对照 kstdnr/csgocfgr_client 的 crosshair-canvas.js：
+     length = size × 2         thickness = thickness × 2
+     gap    = ceil(gap + 4)    size > 2 时 length 再 +1
+     臂起点 = 中心 + (thickness/2 + gap)   ← 这个 thickness/2 偏移容易漏
+   早期版本把 size/thickness 当成 1:1 像素，画出来只有游戏里的一半大。
+   唯一有意偏离参考的地方：粗细为奇数像素时参考会画在半像素上（被抗锯齿糊成两行），
+   这里强制对齐整像素 —— 代价是相对中心偏 0.5px，换来和游戏一样锐利的边缘。 */
+function csDraw(g, cx, cy, scale, fb){
+  // 先按 1080p 基准算出参考几何（那些取整/+1 的怪癖都定义在这个尺度上）。
+  // 参考实现用 parseInt 截断而非四舍五入 —— size 1.3 时截断给 2、四舍五入给 3，必须跟它一致。
+  let Lref = Math.max(1, Math.trunc(cfg.xSize * 2));
+  if (Math.trunc(cfg.xSize) > 2) Lref += 1;
+  const Wref = Math.max(1, Math.trunc(cfg.xThick * 2));
+  const Gref = Math.ceil(cfg.xGap + 4);
+  const L  = Math.max(1, Math.round(Lref * scale));
+  const W  = Math.max(1, Math.round(Wref * scale));
+  const Gp = Math.round(Gref * scale);
+  const O  = Math.max(0, Math.round(cfg.xOut * scale));
+  const ff = xhF();
+  const useA = !(ff && ff.alphaEnabled === false);
+  const a   = useA ? clamp(cfg.xAlpha,0,255)/255 : 1;
+  const col = fb==='miss' ? '#f85149' : (fb==='hit' ? '#3fb950' : cfg.xCol);
+  const x0 = Math.round(cx), y0 = Math.round(cy), h = Math.floor(W/2);
+
+  const arms = [
+    [x0 - (L + h + Gp), y0 - h, L, W],   // 左
+    [x0 + h + Gp,       y0 - h, L, W],   // 右
+    [x0 - h, y0 + h + Gp,       W, L],   // 下
+  ];
+  if (!cfg.xT)  arms.push([x0 - h, y0 - (L + h + Gp), W, L]);   // T 形准星没有上臂
+  if (cfg.xDot) arms.push([x0 - h, y0 - h, W, W]);
+
+  g.save(); g.globalAlpha = a;
+  if (O > 0){
+    g.fillStyle = 'rgba(0,0,0,.85)';
+    for (const arm of arms) g.fillRect(arm[0]-O, arm[1]-O, arm[2]+O*2, arm[3]+O*2);
+  }
+  g.fillStyle = col;
+  for (const arm of arms) g.fillRect(arm[0], arm[1], arm[2], arm[3]);
+  g.restore();
+}
+
+/* ─────────── 无畏契约：准星代码 ───────────
+   键位映射、默认值、编码顺序对照 genesy/crosshair-codes 的 codegenerator.ts
+   （社区准星生成器的参考实现），颜色表对照同仓库的 crosshair.tsx。
+   最关键的一点是**只写出与默认值不同的项**：解码必须从默认值出发做覆盖，
+   编码必须逐项和默认值比对；全默认的准星代码就是单个字符 "0"。
+   段落标记：P=主准星  A=开镜准星  S=狙击准星  NAME=名称。
+   本工具只渲染主准星，A/S/NAME 整段原样留着，编码时拼回去，保证往返不丢设置。 */
+const VAL_COLORS = ['#FFFFFF','#00FF00','#7FFF00','#DFFF00','#FFFF00','#00FFFF','#FF00FF','#FF0000'];
+const VAL_BOOL_P = {h:1, d:1, m:1, f:1}; // 主准星里是布尔的键
+const VAL_STR_P  = {u:1};                // 主准星里是字符串的键（自定义颜色 RRGGBBAA）
+const VAL_BOOL_L = {b:1, g:1, m:1, f:1}; // 线段里是布尔的键
+
+function valDefault(){
+  return {
+    ver:'0',
+    gen:{},   // 根级键值（c=覆盖所有主准星 / s=启用高级选项 / p=开镜不跟随主准星），原样保留
+    // f（开火时淡出准星）参考实现漏了，但真实代码里有，位置在中心点之后、线段之前
+    prim:{c:0, u:'FFFFFF', h:true, t:1, o:0.5, d:false, z:2, a:1, f:true, m:false},
+    inner:{b:true, a:0.8, l:6, v:6, g:false, t:2, o:3, m:false, s:1, f:true, e:1},
+    outer:{b:true, a:0.35, l:2, v:2, g:false, t:2, o:10, m:true, s:1, f:true, e:1},
+    unk:[],   // P 段里本实现不认识的键，原样保留、原样写回
+    rest:''   // A / S / NAME 段落原文
+  };
+}
+
+function valDecode(code){
+  const s = String(code||'').trim();
+  if (!s) throw new Error('代码是空的');
+  const tok = s.split(';');
+  const x = valDefault();
+  if (!/^\d+$/.test(tok[0])) throw new Error('开头应该是版本号（通常是 0）');
+  x.ver = tok[0];
+  let sec = 'gen', i = 1;
+  while (i < tok.length){
+    const k = tok[i];
+    if (k === 'P'){ sec = 'P'; i++; continue; }
+    if (k === 'A' || k === 'S' || k === 'NAME'){ x.rest = tok.slice(i).join(';'); break; }
+    const v = tok[i+1];
+    if (v === undefined) throw new Error('键「'+k+'」后面缺少值');
+    /* 不认识的键一律留着，不报错。Riot 加过新键（比如主准星的 f = 开火时淡出），
+       参考实现也没建模；导入时炸掉会让一大批真实代码用不了。留着并原样写回最安全。 */
+    if (sec === 'gen'){
+      x.gen[k] = v;
+    } else if (k[0] === '0' || k[0] === '1'){
+      const L = k[0]==='0' ? x.inner : x.outer, lk = k.slice(1);
+      if (lk in L) L[lk] = VAL_BOOL_L[lk] ? !!+v : +v;
+      else x.unk.push([k, v]);
+    } else if (k in x.prim){
+      x.prim[k] = VAL_STR_P[k] ? v : (VAL_BOOL_P[k] ? !!+v : +v);
+    } else {
+      x.unk.push([k, v]);
+    }
+    i += 2;
+  }
+  // 预设色统一展开进 u，取色时就不用再分支
+  if (x.prim.c !== 8 && VAL_COLORS[x.prim.c]) x.prim.u = VAL_COLORS[x.prim.c].slice(1);
+  return x;
+}
+
+function valEncode(x){
+  const D = valDefault();
+  const num = v => Number.isInteger(v) ? String(v) : String(+(+v).toFixed(3));
+  const head = [x.ver || '0'];
+  for (const k in x.gen) head.push(k, x.gen[k]);
+  const b = [];
+
+  // 颜色：命中预设写索引（白色是默认值，省略），否则写 8 再跟 8 位自定义色
+  const hex = ('#' + String(x.prim.u||'FFFFFF').replace('#','')).toUpperCase().slice(0,7);
+  const ci = VAL_COLORS.indexOf(hex);
+  if (ci >= 0){ if (ci !== 0) b.push('c', ci); }
+  else b.push('c', 8, 'u', hex.slice(1) + 'FF');
+
+  if (!x.prim.h) b.push('h', 0);                      // 关掉描边就不用再写粗细/不透明度
+  else {
+    if (x.prim.t !== D.prim.t) b.push('t', num(x.prim.t));
+    if (x.prim.o !== D.prim.o) b.push('o', num(x.prim.o));
+  }
+  if (x.prim.d){
+    b.push('d', 1);
+    if (x.prim.z !== D.prim.z) b.push('z', num(x.prim.z));
+    if (x.prim.a !== D.prim.a) b.push('a', num(x.prim.a));
+  }
+  if (x.prim.f !== D.prim.f) b.push('f', +x.prim.f);
+  if (x.prim.m) b.push('m', 1);   // f 和 m 的先后没有实例佐证，按游戏设置界面的顺序放
+
+  /* 显示位一旦和默认不同就只写它、其余全跳过 —— 这条照抄参考实现。
+     但线段内部的顺序按真实代码修正过：参考实现写的是 …a, f, e, m, s，
+     而实测代码 1t;0;1l;0;1o;0;1a;0;1m;0;1f;0 里 m 在 f 前面，以游戏为准。 */
+  for (const pk of [['0','inner'], ['1','outer']]){
+    const p = pk[0], L = x[pk[1]], d = D[pk[1]];
+    if (L.b !== d.b){ b.push(p+'b', +L.b); continue; }
+    if (L.t !== d.t) b.push(p+'t', num(L.t));
+    if (L.l !== d.l) b.push(p+'l', num(L.l));
+    if (L.g)         b.push(p+'v', num(L.v), p+'g', 1);
+    if (L.o !== d.o) b.push(p+'o', num(L.o));
+    if (L.a !== d.a) b.push(p+'a', num(L.a));
+    if (L.m !== d.m){ b.push(p+'m', +L.m); if (L.m) b.push(p+'s', num(L.s)); }
+    if (L.f !== d.f) b.push(p+'f', +L.f);
+    if (L.f && L.e !== d.e) b.push(p+'e', num(L.e));
+  }
+
+  for (const kv of (x.unk||[])) b.push(kv[0], kv[1]);
+  let out = head.concat(b.length ? ['P'].concat(b) : []).join(';');
+  if (x.rest) out += ';' + x.rest;
+  return out;
+}
+
+function valFromUI(){
+  const f = xhF() ? JSON.parse(JSON.stringify(xhF())) : valDefault();
+  f.prim.u = String(cfg.xCol||'#ffffff').replace('#','').toUpperCase();
+  const ci = VAL_COLORS.indexOf('#'+f.prim.u);
+  f.prim.c = ci >= 0 ? ci : 8;
+  f.prim.h = cfg.xStroke > 0;
+  if (cfg.xStroke > 0) f.prim.t = cfg.xStroke;
+  f.prim.d = cfg.xDot;  f.prim.z = cfg.xDotT;
+  // v（上下臂长）和 g（纵横不联动）界面上没有对应字段，原样保留 ——
+  // 导入一个拆分了纵横长度的准星时，改「长度」只动左右臂，不会把人家的设置抹平。
+  f.inner.b = true;
+  f.inner.l = cfg.xInL; f.inner.t = cfg.xInT; f.inner.o = cfg.xInO; f.inner.a = cfg.xInA;
+  f.outer.b = cfg.xOutB;
+  f.outer.l = cfg.xOutL; f.outer.t = cfg.xOutT; f.outer.o = cfg.xOutO; f.outer.a = cfg.xOutA;
+  return f;
+}
+function valToUI(f){
+  cfg.xhFull.val = f;
+  const hex = (f.prim.c !== 8 && VAL_COLORS[f.prim.c]) ? VAL_COLORS[f.prim.c]
+                                                       : '#'+String(f.prim.u||'FFFFFF').slice(0,6);
+  $('xCol').value    = hex.toLowerCase();
+  $('xStroke').value = f.prim.h ? f.prim.t : 0;
+  $('xDot').checked  = f.prim.d;    $('xDotT').value = f.prim.z;
+  $('xInL').value=f.inner.l; $('xInT').value=f.inner.t; $('xInO').value=f.inner.o; $('xInA').value=f.inner.a;
+  $('xOutB').checked=f.outer.b;
+  $('xOutL').value=f.outer.l; $('xOutT').value=f.outer.t; $('xOutO').value=f.outer.o; $('xOutA').value=f.outer.a;
+}
+/* 无畏契约准星几何对照 genesy/crosshair-codes 的 CrosshairDisplay.tsx：
+     左臂  x ∈ [-(偏移+长度), -偏移]，高 = 粗细，纵向以 -粗细/2 居中
+     上臂  y ∈ [-(偏移+纵长), -偏移]，宽 = 粗细，横向以 -粗细/2 居中
+     纵长  = 未拆分纵横时同左右臂长度，拆分了才用 v
+     中心点 边长 = 中心点粗细，居中
+     描边  每个矩形外扩「描边粗细」的一圈黑边，不透明度取主准星的 o
+   参数就是字面像素值 —— 上面 CS2 那套 ×2 / gap+4 搬过来会画大一倍。 */
+function valDraw(g, cx, cy, scale, fb){
+  const F = xhF() || valFromUI();
+  const P = F.prim;
+  const px = v => Math.round(v * scale);
+  const x0 = Math.round(cx), y0 = Math.round(cy);
+  const O  = P.h ? Math.max(0, px(P.t)) : 0;
+  const col = fb==='miss' ? '#f85149' : (fb==='hit' ? '#3fb950' : cfg.xCol);
+
+  const rects = [];   // [x, y, w, h, alpha]
+  const addLine = L => {
+    if (!L.b || L.t <= 0) return;
+    const t  = Math.max(1, px(L.t)), o = Math.max(0, px(L.o)), ht = Math.floor(t/2);
+    const lh = Math.max(0, px(L.l));                  // 左右臂长
+    const lv = Math.max(0, px(L.g ? L.v : L.l));      // 上下臂长
+    if (lh > 0){
+      rects.push([x0-o-lh, y0-ht, lh, t, L.a]);
+      rects.push([x0+o,    y0-ht, lh, t, L.a]);
+    }
+    if (lv > 0){
+      rects.push([x0-ht, y0-o-lv, t, lv, L.a]);
+      rects.push([x0-ht, y0+o,    t, lv, L.a]);
+    }
+  };
+  addLine(F.inner);
+  addLine(F.outer);
+  if (P.d && P.z > 0){
+    const z = Math.max(1, px(P.z)), hz = Math.floor(z/2);
+    rects.push([x0-hz, y0-hz, z, z, P.a]);
+  }
+
+  g.save();
+  if (O > 0){
+    g.fillStyle = 'rgba(0,0,0,'+clamp(P.o,0,1)+')';
+    for (const r of rects) g.fillRect(r[0]-O, r[1]-O, r[2]+O*2, r[3]+O*2);
+  }
+  g.fillStyle = col;
+  for (const r of rects){ g.globalAlpha = clamp(r[4],0,1); g.fillRect(r[0],r[1],r[2],r[3]); }
+  g.restore();
+}
+
+/* ─────────── 派发 ─────────── */
+GAMES.cs2.xh = {
+  decode:csDecode, encode:csEncode, fromUI:csFromUI, toUI:csToUI, draw:csDraw,
+  fields:'xhCS', conVars:csToConVars, codeLabel:'复制分享代码',
+  placeholder:'粘贴 CS2 准星分享代码：CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx',
+  copyHint:'分享代码已复制，可直接粘进 CS2 的准星导入框',
+  skipped:f => [ f.style<2 && ('动态准星 style '+f.style),
+                 f.followRecoil && '随后坐力移动',
+                 f.deployedWeaponGapEnabled && 'gap 随武器变化' ].filter(Boolean)
+};
+GAMES.val.xh = {
+  decode:valDecode, encode:valEncode, fromUI:valFromUI, toUI:valToUI, draw:valDraw,
+  fields:'xhVAL', conVars:null, codeLabel:'复制准星代码',
+  placeholder:'粘贴无畏契约准星代码，例如 0;P;c;1;h;0;0l;4;0o;2;0a;1;0f;0;1b;0',
+  copyHint:'准星代码已复制，粘进游戏里 准星 → 导入配置文件代码 即可',
+  skipped:f => [ (f.inner.f||f.outer.f) && '开火误差扩散',
+                 (f.inner.m||f.outer.m) && '移动误差扩散',
+                 f.rest && '开镜/狙击准星' ].filter(Boolean)
+};
+const xhDecode = c => G.xh.decode(c);
+const xhEncode = x => G.xh.encode(x);
+const xhFromUI = () => G.xh.fromUI();
+const xhToUI   = f => { G.xh.toUI(f); refreshReadout(); };
+function drawCrosshair(g, cx, cy, scale, fb){ return G.xh.draw(g, cx, cy, scale, fb); }
+
+function xhMsg(text, ok){
+  const el = $('xhMsg');
+  el.textContent = text; el.className = ok ? 'ok' : (text?'err':'');
+}
+
+/* ═══════════ 试次分析 ═══════════ */
+/**
+ * 从轨迹中提取"首次停枪"落点比值。
+ * 弹道阶段（ballistic）结束于峰值角速度之后第一次降到 20% 以下。
+ * ratio = 落点在目标方向轴上的投影 / 所需角度； >1 过冲，<1 欠冲。
+ */
+function analyzeTrial(tr){
+  const S = tr.samples;
+  if (S.length < 4) return null;
+  const B0 = camBasis(tr.yaw0, tr.pitch0);
+  const tT = tangentOf(tr.dir, B0);
+  const A  = Math.hypot(tT[0],tT[1]);
+  if (A < 1e-6) return null;
+  const ux = tT[0]/A, uy = tT[1]/A;
+
+  const proj = [], raw = [];
+  let prev = null;
+  for (let i=0;i<S.length;i++){
+    const d = dirFromAngles(S[i].yaw, S[i].pitch);
+    const v = tangentOf(d, B0);
+    proj.push(v[0]*ux + v[1]*uy);
+    if (prev){
+      const dt = (S[i].t - S[i-1].t)/1000;
+      raw.push(dt>0 ? Math.acos(clamp(dot(d,prev),-1,1))/dt*R2D : 0);
+    } else raw.push(0);
+    prev = d;
+  }
+  // 5 帧滑动平均。窗口太窄时手抖会在减速段造出假谷底，导致提前判停 ——
+  // 合成轨迹实测：3 帧窗在 ±0.8° 抖动下系统性低估 2.0%，5 帧窗降到 0.1% 以内。
+  const spd = raw.map((_,i)=>{
+    let s=0,c=0;
+    for (let k=-2;k<=2;k++){ const j=i+k; if (j>=0 && j<raw.length){ s+=raw[j]; c++; } }
+    return s/c;
+  });
+  let peak=0, pi=0;
+  for (let i=0;i<spd.length;i++) if (spd[i]>peak){ peak=spd[i]; pi=i; }
+  const reqDeg = A*R2D;
+  // 峰值速度过低 = 慢速拖拽而非弹道甩枪，这种试次没有可用的"首次停枪"概念
+  if (peak < Math.max(15, reqDeg*2.5)) return null;
+
+  // 弹道终点 = 峰值后第一个速度谷底（修正动作的起点），或减速到几乎停住。
+  // 阈值用 10% 而非 20%：定高会在减速尾段提前判停，系统性低估落点约 2%。
+  // 谷底还要求后续速度回升 1.3 倍，否则减速段的噪声波动会被误判成修正起点。
+  let stop = -1;
+  for (let i=pi+1;i<spd.length-2;i++){
+    if (spd[i] < peak*0.10){ stop=i; break; }
+    if (spd[i] <= spd[i+1] && spd[i+2] > spd[i]*1.3 && spd[i] < peak*0.35){ stop=i; break; }
+  }
+  if (stop < 0) stop = S.length-1;
+
+  // 首次停枪之后的微调次数：沿目标轴的方向反转（0.25° 迟滞去噪）
+  let corr=0, dir=0, anchor=proj[stop];
+  const HYS = 0.25*D2R;
+  for (let i=stop+1;i<proj.length;i++){
+    const d = proj[i]-anchor;
+    if (Math.abs(d) < HYS) continue;
+    const s = Math.sign(d);
+    if (dir && s!==dir) corr++;
+    dir = s; anchor = proj[i];
+  }
+  return {
+    ratio: proj[stop]/A,
+    reqDeg,
+    phi: Math.atan2(tT[1], tT[0]),
+    stopMs: S[stop].t - S[0].t,
+    totalMs: tr.clickT - S[0].t,
+    corr, hit: tr.hit, peak
+  };
+}
+
+/* ═══════════ 测试主循环 ═══════════ */
+const Test = {
+  running:false, paused:false, state:'run', frameGaps:[], inputAge:[],
+  yaw:0, pitch:0, phase:0, phaseT0:0, phaseTrials:0, transUntil:0,
+  target:null, trial:null, results:[], fb:null, fbT:0, lastFrame:0,
+
+  start(){
+    this.running=true; this.paused=false;
+    this.phases = activePhases();
+    this.yaw=0; this.pitch=0; this.phase=0; this.results=[];
+    this.target=null; this.targets=null; this.trial=null; this.fb=null; this.phaseTrials=0;
+    this.activeSens = this.phases[0].sens || cfg.sens;
+    this.frameGaps = []; this.inputAge = [];
+    Input.reset();
+    this.lastFrame = performance.now();
+    this.enterTrans(performance.now(), '');
+    requestAnimationFrame(this.loop.bind(this));
+  },
+  curPhase(){ return this.phases[this.phase]; },
+
+  /* ── 阶段过渡：给用户明确的换阶段信号，倒计时不计入测量 ── */
+  enterTrans(now, done){
+    // 同一灵敏度内部切换子阶段时用短过渡，只有换灵敏度才给完整的提示卡
+    this.state='trans'; this.transUntil = now + (this.phases[this.phase].quiet ? 1800 : 3200);
+    this.target=null; this.targets=null; this.trial=null; this.fb=null;
+    const P = this.phases[this.phase];
+    $('tDone').innerHTML   = done || '';
+    $('tStep').textContent = `阶段 ${this.phase+1} / ${this.phases.length}`;
+    $('tName').textContent = P.name;
+    $('tDesc').innerHTML   = typeof P.desc==='function' ? P.desc() : P.desc;
+    $('tCount').textContent = '3';
+    $('trans').classList.remove('hidden');
+  },
+  beginPhase(now){
+    const P = this.phases[this.phase];
+    // 视角归零：跟枪/微控阶段不约束视角，跑完可能漂到很远，
+    // 下一个小角度阶段就再也回不到可用范围。切换发生在过渡卡片期间，看不到跳变。
+    this.yaw = 0; this.pitch = 0;
+    this.state='run';
+    $('trans').classList.add('hidden');
+    this.activeSens = P.sens || cfg.sens;      // A/B 模式下每块用不同灵敏度
+    this.phaseT0 = now; this.phaseTrials = 0; this.fbT = now;
+    this.spawn();
+  },
+  phaseSummary(){
+    const P = this.phases[this.phase];
+    const rs = this.results.filter(r=>r.phase===P.id);
+    if (!P.keep) return `✓ 热身完成 · ${this.phaseTrials} 次有效试次`;
+    if (P.kind==='track'){
+      const on = rs.length ? avg(rs.map(r=>r.onTarget))*100 : 0;
+      return `✓ ${P.name}完成 · 在靶时间 ${on.toFixed(0)}%`;
+    }
+    if (P.kind==='wave'){
+      const cnt = P.waveMin + Math.floor(Math.random()*(P.waveMax-P.waveMin+1));
+      const B2 = camBasis(this.yaw, this.pitch), dirs=[];
+      for (let k=0;k<cnt;k++){
+        for (let t=0;t<40;t++){
+          const phi = Math.random()*Math.PI*2;
+          const cap = Math.min(P.a1*D2R, this.maxAngleAt(phi));
+          const lo  = Math.min(P.a0*D2R, cap*0.5);
+          const d = rotateFrom(B2, lo + Math.random()*(cap-lo), phi);
+          const el = Math.asin(clamp(d[1],-1,1)), az = Math.atan2(d[0],d[2]);
+          if (Math.abs(el) > 22*D2R || Math.abs(az) > 55*D2R) continue;
+          if (dirs.some(o=>Math.acos(clamp(dot(o,d),-1,1)) < 8*D2R)) continue;  // 靶之间留间距
+          dirs.push(d); break;
+        }
+      }
+      if (!dirs.length) dirs.push(rotateFrom(B2, P.a0*D2R, Math.random()*Math.PI*2));
+      this.targets = dirs.map(d=>({dir:d, rad:this.tgtRad()}));
+      this.target  = this.targets[0];
+      // prevDir/pathDeg/idSum：按玩家实际打靶顺序累计几何路径，
+      // 用来消掉"先打哪个"带来的行程差异 —— 那部分方差跟灵敏度无关。
+      this.trial   = {kind:'wave', t0:performance.now(), n0:dirs.length, shots:0, hits:0,
+                      prevDir:dirFromAngles(this.yaw,this.pitch), pathDeg:0, idSum:0};
+      return;
+    }
+    if (P.kind==='wave'){
+      const w = rs.filter(r=>r.complete!==false);
+      return `✓ ${P.name}完成 · ${w.length} 波 · 吞吐 ${avg(w.map(r=>r.tp||0)).toFixed(2)} bit/s · 命中率 ${(avg(w.map(r=>r.acc))*100).toFixed(0)}%`;
+    }
+    if (P.kind==='hold'){
+      const on = rs.length ? avg(rs.map(r=>r.onTarget))*100 : 0;
+      const rms = rs.length ? avg(rs.map(r=>r.rms)) : 0;
+      return `✓ ${P.name}完成 · 在靶 ${on.toFixed(0)}% · 偏离 ${rms.toFixed(2)}°`;
+    }
+    const hit = rs.length ? Math.round(rs.filter(r=>r.hit).length/rs.length*100) : 0;
+    if (P.kind==='correct'){
+      return `✓ ${P.name}完成 · ${rs.length} 次 · 平均修正 ${avg(rs.map(r=>r.corr)).toFixed(2)} 次 · 平均 ${avg(rs.map(r=>r.shots)).toFixed(1)} 枪命中`;
+    }
+    if (P.stop.ci){
+      const st = trimmed(rs.map(r=>r.ratio));
+      return `✓ ${P.name}完成 · ${rs.length} 次有效甩枪 · 精度 ±${(1.96*st.se*100).toFixed(1)}% · 命中 ${hit}%`;
+    }
+    return `✓ ${P.name}完成 · ${rs.length} 次有效试次 · 命中 ${hit}%`;
+  },
+  /** 停止条件：按有效试次数或置信区间宽度，不按时间。maxMs 只是安全网。 */
+  phaseDone(now){
+    const P = this.phases[this.phase], s = P.stop;
+    if (now - this.phaseT0 >= s.maxMs) return true;
+    if (s.trials) return this.phaseTrials >= s.trials;
+    if (this.phaseTrials < s.minTrials) return false;
+    const st = trimmed(this.results.filter(r=>r.phase===P.id).map(r=>r.ratio));
+    return st.n > 1 && 1.96*st.se <= s.ci;
+  },
+
+  /** 可见范围内的最大甩枪角度（FOV 椭圆近似，留 15% 余量） */
+  maxAngleAt(phi){
+    const hh = hFovOf(cfg.aspect)/2, hv = G.vFov/2;
+    const c=Math.cos(phi), s=Math.sin(phi);
+    return 0.85/Math.hypot(c/hh, s/hv);
+  },
+  /** 跟枪目标轨迹：三个不可通约的正弦叠加 → 平滑但不可预测，避免被背下来。
+      峰值角速度约 33°/s，接近游戏里一个横向拉枪的敌人。 */
+  /* ── 压枪的后坐力模型 ──
+     **刻意不是 AK 的真实弹道**，这是个有意的取舍，理由：
+     真实弹道是可以背下来的，而背下来的那一套是绑定在你当时那个灵敏度上的。
+     换个灵敏度来测，成绩变差会是因为"记忆对不上"而不是"这个灵敏度不合适" ——
+     那正是这个工具一直在躲的适应性混淆，而且比甩枪那边更难消除（喷子记忆重塑得很慢）。
+     所以拆成两半：
+       纵向 = 固定 profile。它才是要测的能力（能不能稳定执行一段持续的下拉），
+              而且 A/B 两边必须完全一致，比较才成立。背下"匀速往下拉"不算作弊，那就是被测的技能。
+       横向 = 每段随机频率 + 随机左右。背不住，只能靠看着补，测的是闭环修正。
+     形状按社区公认的定性描述（前 4–5 发几乎直上，之后向左弧、转横向摆动）。
+     量级是**约数**，不声称等于 AK 实测值 —— 网上找不到可信的角度数值，
+     我不编一个假装精确的数。改这三个常数即可整体缩放。 */
+  /** 微控靶的漂移轨迹：峰值角速度约 2°/s，是跟枪的 1/16。
+      幅度足够大（±5°），松手后靶会走掉，脱手刷分行不通。 */
+  /** 累计后坐力偏移，n = 已射出弹数（可为小数）。返回 [方位, 仰角]，弧度。 */
+  sprayOffset(n, sd){
+    /* 抬升用临界阻尼阶跃响应 1-(1+x)e^(-x)，x = n/SPRAY_TAU。
+       关键性质：n=0 处**值和斜率都是 0**，先加速再饱和，峰值速率落在第 τ 发。
+       原来用的是 1-e^(-x)，那条曲线的最大斜率恰好在 n=0 —— 一扣扳机就是最猛的一下
+       （开火首帧就抬 0.42°、瞬时 52°/s），玩家反馈"抖得太厉害"就是这个。
+       实机也不是这样：CS 里第一发是准的，后坐力是打出去之后才累积起来的。
+       换曲线后首帧只抬 0.006°（原来的 1.4%），峰值降到 23°/s 且出现在第 3.5 发，
+       第 1 发累计 0.74° 仍在靶半径 0.9° 以内 —— 首发照样命中。总抬升 22° 不变。 */
+    const x = n / SPRAY_TAU;
+    const rise = SPRAY_RISE * (1 - (1 + x)*Math.exp(-x));
+    const k = Math.max(0, n - 4);
+    // 横向也要淡入：直接从第 4 发开始摆会在那里出现一个斜率折角，同样是一下顿挫
+    const ramp = Math.min(1, k/4);
+    const sway = sd.d * SPRAY_SWAY * ramp *
+      (0.6*Math.sin(0.40*k*(1+0.3*sd.r1)) + 0.4*Math.sin(0.23*k*(1+0.4*sd.r2)));
+    return [sway*D2R, rise*D2R];
+  },
+  driftAngles(t){
+    return [(2.5*Math.sin(0.35*t) + 1.5*Math.sin(0.61*t+1.1) + 1.2*Math.sin(0.23*t+2.3))*D2R,
+            (1.8*Math.sin(0.29*t+0.7) + 1.1*Math.sin(0.47*t+1.9))*D2R];
+  },
+  driftDir(t, off){
+    const [az,el] = this.driftAngles(t);
+    return dirFromAngles(az + (off?off[0]:0), el + (off?off[1]:0));
+  },
+  trackAngles(t){
+    return [(22*Math.sin(0.55*t) + 9*Math.sin(1.31*t+1.7) + 4*Math.sin(2.17*t+0.4))*D2R,
+            ( 4*Math.sin(0.83*t+2.1) + 2*Math.sin(1.79*t))*D2R];
+  },
+  /** 带偏移的轨迹：偏移量让目标恰好从当前准星位置起步，
+      否则上一阶段留下的视角偏移会让跟枪一开始就得先找靶。 */
+  trackDir(t, off){
+    const [az,el] = this.trackAngles(t);
+    return dirFromAngles(az + (off?off[0]:0), el + (off?off[1]:0));
+  },
+  spawn(){
+    const P = this.curPhase();
+    if (P.kind==='track'){
+      const ph = Math.random()*100;          // 每次随机相位，每段轨迹都不同，防止被背下来
+      const [az0,el0] = this.trackAngles(ph);
+      const off = [this.yaw - az0, this.pitch - el0];   // 目标从当前准星位置起步
+      this.trial  = {kind:'track', ph, off, t0:performance.now(), on:0, frames:0, errSum:0, errSq:0, maxErr:0};
+      this.target = {dir:this.trackDir(ph, off), rad:this.tgtRad()};
+      return;
+    }
+    if (P.kind==='wave'){
+      const cnt = P.waveMin + Math.floor(Math.random()*(P.waveMax-P.waveMin+1));
+      const B2 = camBasis(this.yaw, this.pitch), dirs=[];
+      for (let k=0;k<cnt;k++){
+        for (let t=0;t<40;t++){
+          const phi = Math.random()*Math.PI*2;
+          const cap = Math.min(P.a1*D2R, this.maxAngleAt(phi));
+          const lo  = Math.min(P.a0*D2R, cap*0.5);
+          const d = rotateFrom(B2, lo + Math.random()*(cap-lo), phi);
+          const el = Math.asin(clamp(d[1],-1,1)), az = Math.atan2(d[0],d[2]);
+          if (Math.abs(el) > 22*D2R || Math.abs(az) > 55*D2R) continue;
+          if (dirs.some(o=>Math.acos(clamp(dot(o,d),-1,1)) < 8*D2R)) continue;  // 靶之间留间距
+          dirs.push(d); break;
+        }
+      }
+      if (!dirs.length) dirs.push(rotateFrom(B2, P.a0*D2R, Math.random()*Math.PI*2));
+      this.targets = dirs.map(d=>({dir:d, rad:this.tgtRad()}));
+      this.target  = this.targets[0];
+      // prevDir/pathDeg/idSum：按玩家实际打靶顺序累计几何路径，
+      // 用来消掉"先打哪个"带来的行程差异 —— 那部分方差跟灵敏度无关。
+      this.trial   = {kind:'wave', t0:performance.now(), n0:dirs.length, shots:0, hits:0,
+                      prevDir:dirFromAngles(this.yaw,this.pitch), pathDeg:0, idSum:0};
+      return;
+    }
+    if (P.kind==='spray'){
+      const B = camBasis(this.yaw, this.pitch);
+      this.trial = {kind:'spray', ph:0, t0:performance.now(), firing:false, fireT:0,
+                    seed:{d:Math.random()<0.5?1:-1, r1:Math.random(), r2:Math.random()},
+                    lastAz:0, lastEl:0, lastShot:0, shots:0, hitShots:0,
+                    frames:0, on:0, errSq:0, vSq:0, hSq:0};
+      /* 靶就在准星上：任务是"别被后坐力推开"，不是"先找到靶"。
+         偏移必须**明显小于靶半径**（这里 0.3° vs 0.9°），否则一开局就是脱靶状态 ——
+         完全抵消后坐力的人也会因为那个初始偏移永远打不中，命中率恒为 0，指标就废了。 */
+      this.target = {dir:rotateFrom(B, 0.3*D2R, Math.random()*Math.PI*2), rad:this.tgtRad()};
+      return;
+    }
+    if (P.kind==='hold'){
+      const ph = Math.random()*100;
+      const [az0,el0] = this.driftAngles(ph);
+      // 从准星附近一点点起步：要先压上去才开始计时
+      const B = camBasis(this.yaw, this.pitch);
+      const seed = rotateFrom(B, 5*D2R, Math.random()*Math.PI*2);
+      const off = [Math.atan2(seed[0],seed[2]) - az0, Math.asin(clamp(seed[1],-1,1)) - el0];
+      this.trial  = {kind:'hold', ph, off, t0:performance.now(), armed:false, startT:0,
+                     frames:0, on:0, errSq:0, maxErr:0};
+      this.target = {dir:this.driftDir(ph, off), rad:this.tgtRad()};
+      return;
+    }
+    this.spawnFlick();
+  },
+  spawnFlick(){
+    const P = this.curPhase();
+    const B = camBasis(this.yaw, this.pitch);
+    const elLim = (P.kind==='turn' ? 12 : 22)*D2R, azLim = 55*D2R;
+    let dir=null;
+    /* 视角已经漂出可用范围时，直接朝世界原点方向出靶把它拉回来。
+       否则拒绝采样会连续失败、每次都落到下面的固定角度兜底分支 ——
+       实测有整轮 48 次试次全部出在 15°，把 3–12° 和 6–28° 两个阶段彻底作废。 */
+    if (Math.abs(this.pitch) > elLim || (P.kind!=='turn' && Math.abs(this.yaw) > azLim)){
+      const home = tangentOf([0,0,1], B), m = Math.hypot(home[0],home[1]);
+      if (m > 1e-6){
+        const phi = Math.atan2(home[1], home[0]);
+        const cap = Math.min(P.a1*D2R, this.maxAngleAt(phi));
+        dir = rotateFrom(B, clamp(m, P.a0*D2R, cap), phi);
+      }
+    }
+    for (let k=0;k<30;k++){
+      const phi = Math.random()*Math.PI*2;
+      let ang;
+      if (P.kind==='turn') ang = (P.a0 + Math.random()*(P.a1-P.a0))*D2R;
+      else {
+        const cap = Math.min(P.a1*D2R, this.maxAngleAt(phi));
+        const lo  = Math.min(P.a0*D2R, cap*0.5);
+        ang = lo + Math.random()*(cap-lo);
+      }
+      const d = rotateFrom(B, ang, phi);
+      const el = Math.asin(clamp(d[1],-1,1));
+      const az = Math.atan2(d[0], d[2]);
+      // 控制视角漂移，避免撞上 pitch 限位或转到房间角落
+      const elOk = Math.abs(el) < (P.kind==='turn' ? 12*D2R : 22*D2R);
+      const azOk = P.kind==='turn' ? true : Math.abs(az) < 55*D2R;
+      if (elOk && azOk){ dir=d; break; }
+    }
+    // 兜底：仍然失败就朝原点方向走，绝不使用与阶段无关的固定角度
+    if (!dir){
+      const home = tangentOf([0,0,1], B), m = Math.hypot(home[0],home[1]);
+      const phi = m>1e-6 ? Math.atan2(home[1],home[0]) : Math.random()*Math.PI*2;
+      const cap = Math.min(P.a1*D2R, this.maxAngleAt(phi));
+      dir = rotateFrom(B, clamp(m||P.a0*D2R, P.a0*D2R, cap), phi);
+    }
+    this.target = {dir, rad:this.tgtRad()};
+    this.trial  = {kind:'flick', yaw0:this.yaw, pitch0:this.pitch, dir, samples:[],
+                   t0:performance.now(), clickT:0, hit:false, shots:0};
+  },
+  tgtRad(){ const P=this.curPhase(); return (P.tgt || cfg.tgt)*D2R; },
+  onClick(){
+    if (!this.running || this.paused) return;
+    if (this.state==='trans'){ this.beginPhase(performance.now()); return; }
+    if (!this.trial || !this.target || this.trial.clicked) return;
+    const P = this.curPhase();
+    if (P.kind==='spray'){                                // 按住左键 = 开火，不计分
+      const T = this.trial;
+      if (T && !T.firing){ T.firing = true; T.fireT = performance.now(); }
+      return;
+    }
+    if (P.kind==='track' || P.kind==='hold') return;      // 这两种阶段不靠点击计分
+    if (P.kind==='wave'){
+      const d0 = dirFromAngles(this.yaw, this.pitch);
+      this.trial.shots++;
+      const i = this.targets.findIndex(t=>Math.acos(clamp(dot(d0,t.dir),-1,1)) < t.rad);
+      if (i>=0){
+        const T = this.trial, hit = this.targets[i];
+        const D = Math.acos(clamp(dot(T.prevDir, hit.dir),-1,1))*R2D;   // 上一个点到这个靶的角距
+        const W = 2*hit.rad*R2D;                                        // 靶的角直径
+        T.pathDeg += D;
+        T.idSum   += Math.log2(D/W + 1);   // Fitts 难度指数（Shannon 形式）
+        T.prevDir  = hit.dir;
+        this.targets.splice(i,1); T.hits++; this.fb='hit';
+      }
+      else this.fb='miss';
+      this.fbT = performance.now();
+      this.target = this.targets[0] || null;
+      if (!this.targets.length) this.endWave();
+      return;
+    }
+    const d = dirFromAngles(this.yaw, this.pitch);
+    const ang = Math.acos(clamp(dot(d, this.target.dir),-1,1));
+    const hit = ang < this.tgtRad();
+    this.trial.shots++;
+    // 修正阶段：没打中就继续，靶不消失 —— 这才会逼出真实的修正动作
+    if (P.kind==='correct' && !hit){ this.fb='miss'; this.fbT=performance.now(); return; }
+    this.trial.hit = hit;
+    this.trial.clickT = performance.now();
+    // 点击后继续采样 POST_CLICK_MS：很多人在弹道还没结束时就开枪（实测停枪→点击
+    // 中位数只有 4ms），点击即停采样会导致"首次停枪点"根本没被观测到。
+    this.trial.clicked = true;
+    this.fb = hit ? 'hit' : 'miss'; this.fbT = performance.now();
+  },
+  /** settle：切换灵敏度后的前几次还带着上一个灵敏度的肌肉记忆，计入进度但不计入分析 */
+  record(rec){
+    const P = this.curPhase();
+    this.phaseTrials++;
+    if (P.keep) this.results.push(Object.assign(rec,{
+      phase:P.id, ab:P.ab, settle: this.phaseTrials <= (P.settle||0)
+    }));
+  },
+  endTrial(){
+    const r = analyzeTrial(this.trial);
+    // 记下该次生效的灵敏度：换算"手实际走了多少距离"时必须用当次的值
+    if (r) this.record(Object.assign(r,{kind:this.curPhase().kind, shots:this.trial.shots||1,
+                                        sens:this.activeSens}));
+    this.trial=null; this.target=null; this.targets=null;
+  },
+  endWave(){
+    const T = this.trial, ms = performance.now()-T.t0;
+    const done = T.hits >= T.n0;      // 超时未清完的波次不进统计，但仍计入进度
+    this.record({kind:'wave', count:T.n0, clearMs:ms, complete:done,
+      shots:T.shots, hits:T.hits, acc: T.shots ? T.hits/T.shots : 0,
+      perTargetMs: ms/Math.max(1,T.n0),
+      pathDeg: T.pathDeg,
+      msPerDeg: T.pathDeg>0 ? ms/T.pathDeg : 0,
+      /* 两种归一化并存，因为哪一种真正消掉"打靶顺序"取决于运动时间与距离的关系：
+           · 时间 ∝ 距离（线性）      → msPerDeg 是正确的归一化
+           · 时间 ∝ log(距离)（Fitts）→ 吞吐量 tp 才是正确的
+         合成检验里我的模拟玩家是线性的，所以它只能证明 msPerDeg 在线性假设下有效 ——
+         那是循环论证，不能用来判定真人该用哪个。两个都记下来，等真人数据再定。
+         判定方法：用逐波的 (pathDeg, idSum, clearMs) 三元组分别拟合
+         t = c·path 和 t = a + b·idSum，比较残差。 */
+      idSum: T.idSum,
+      tp: ms>0 ? T.idSum/(ms/1000) : 0});
+    this.trial=null; this.target=null; this.targets=null; this.fbT=performance.now();
+  },
+  endTrack(){
+    const T = this.trial;
+    if (T.frames > 60) this.record({kind:'track',
+      onTarget:T.on/T.frames, meanErr:T.errSum/T.frames,
+      rmsErr:Math.sqrt(T.errSq/T.frames), maxErr:T.maxErr, frames:T.frames});
+    this.trial=null; this.target=null; this.targets=null; this.fbT=performance.now();
+  },
+  endHold(){
+    const T = this.trial;
+    if (T.frames > 60) this.record({kind:'hold', rms:Math.sqrt(T.errSq/T.frames),
+      onTarget:T.on/T.frames, maxErr:T.maxErr, frames:T.frames});
+    this.trial=null; this.target=null; this.targets=null; this.fbT=performance.now();
+  },
+  loop(now){
+    if (!this.running) return;
+    requestAnimationFrame(this.loop.bind(this));
+    if (this.paused){ this.lastFrame=now; return; }
+
+    // 帧间隔与输入滞留时长：把"感觉有延迟"变成可测量的数字
+    if (this.lastFrame && this.frameGaps.length < 40000) this.frameGaps.push(now - this.lastFrame);
+    if (Input.lastEventTs && this.inputAge.length < 40000) this.inputAge.push(now - Input.lastEventTs);
+    // 输入 → 视角
+    const [dx,dy] = Input.take(now);
+    const deg = this.activeSens*G.yaw;
+    this.yaw   += dx*deg*D2R;
+    this.pitch -= dy*deg*D2R;
+    this.pitch  = clamp(this.pitch, -89*D2R, 89*D2R);
+    if (this.yaw >  Math.PI) this.yaw -= Math.PI*2;
+    if (this.yaw < -Math.PI) this.yaw += Math.PI*2;
+
+    // 过渡阶段：冻结出靶，只跑倒计时
+    if (this.state==='trans'){
+      Scene.draw(camBasis(this.yaw,this.pitch), null, null);
+      const left = this.transUntil - now;
+      $('tCount').textContent = Math.max(0, Math.ceil(left/1000));
+      if (left <= 0) this.beginPhase(now);
+      this.lastFrame = now;
+      return;
+    }
+
+    const PH = this.curPhase();
+    if (this.trial && PH.kind==='wave'){
+      if (now - this.trial.t0 > 12000) this.endWave();     // 一波打不完就作罢
+    }
+    else if (this.trial && PH.kind==='track') this.stepTrack(now, PH);
+    else if (this.trial && PH.kind==='hold')  this.stepHold(now, PH);
+    else if (this.trial && PH.kind==='spray') this.stepSpray(now, PH);
+    else if (this.trial){
+      this.trial.samples.push({t:now, yaw:this.yaw, pitch:this.pitch});
+      // 点击后仍继续采样，直到弹道确实结束（这段时间同时显示命中反馈，不额外花时间）
+      if (this.trial.clicked && now - this.trial.clickT >= POST_CLICK_MS) this.endTrial();
+      // 修正阶段允许更久（要打中为止），其余一直不点击就超时作废
+      else if (!this.trial.clicked && now - this.trial.t0 > (PH.kind==='correct' ? 12000 : 4000)){
+        this.trial.clickT = now; this.endTrial();
+      }
+    }
+    // 阶段推进要在出靶之前判断：否则最后一次结算完会先出一个新靶、
+    // 紧接着阶段就结束，那个靶成了跨阶段的残留状态。
+    if (this.phaseDone(now)){
+      const sum = this.phaseSummary();
+      if (this.phase >= this.phases.length-1){ this.finish(); return; }
+      this.phase++;
+      this.enterTrans(now, sum);
+      this.lastFrame = now;
+      return;
+    }
+
+    // 短间隔后出下一个靶
+    if (!this.trial && now - this.fbT > 60){ this.fb=null; this.spawn(); }
+
+    // 只有波次阶段才画目标数组。原来写的是 `this.targets || this.target`，
+    // 一旦 targets 有残留就会盖住单靶 —— 转身阶段会显示上一阶段留下的球且点不掉。
+    Scene.draw(camBasis(this.yaw,this.pitch),
+               PH.kind==='wave' ? this.targets : this.target, this.fb);
+    this.hud(now);
+    this.lastFrame = now;
+  },
+  /** 跟枪：目标持续移动，逐帧累计在靶率和角距离。不需要点击。 */
+  stepTrack(now, P){
+    const T = this.trial, t = (now - T.t0)/1000;
+    if (t*1000 >= P.runMs){ this.endTrack(); return; }
+    this.target.dir = this.trackDir(t + T.ph, T.off);
+    const ang = Math.acos(clamp(dot(dirFromAngles(this.yaw,this.pitch), this.target.dir),-1,1));
+    const deg = ang*R2D;
+    T.frames++; T.errSum += deg; T.errSq += deg*deg;
+    if (ang < this.target.rad) T.on++;
+    if (deg > T.maxErr) T.maxErr = deg;
+    this.fb = ang < this.target.rad ? 'hit' : null;
+  },
+  /** 微控：靶极慢漂移，先压上去才开始计时，之后测在靶率和 RMS 角偏离。
+      靶会走 → 松手立刻脱靶，参与度由任务强制，不存在脱手刷分。 */
+  stepHold(now, P){
+    const T = this.trial;
+    const t = (now - T.t0)/1000;
+    this.target.dir = this.driftDir(t + T.ph, T.off);
+    const ang = Math.acos(clamp(dot(dirFromAngles(this.yaw,this.pitch), this.target.dir),-1,1));
+    if (!T.armed){
+      if (ang < this.target.rad){ T.armed = true; T.startT = now; }
+      else if (now - T.t0 > 8000){ this.trial=null; this.target=null; this.targets=null; this.fbT=now; }  // 迟迟压不上去，放弃
+      return;
+    }
+    if (now - T.startT >= P.runMs){ this.endHold(); return; }
+    const deg = ang*R2D;
+    T.frames++; T.errSq += deg*deg;
+    if (ang < this.target.rad) T.on++;
+    if (deg > T.maxErr) T.maxErr = deg;
+    this.fb = ang < this.target.rad ? 'arm' : null;
+  },
+  /** 压枪：按住左键后视角被持续往上推，玩家用鼠标抵消。
+      后坐力直接加在 yaw/pitch 上 —— 游戏里后坐力就是改视角，这样下游渲染和判定都不用改。 */
+  stepSpray(now, P){
+    const T = this.trial;
+    if (!T.firing){
+      // 迟迟不开火就放弃这一段，免得卡住
+      if (now - T.t0 > 8000){ this.trial=null; this.target=null; this.targets=null; this.fbT=now; }
+      return;
+    }
+    const n = Math.min(SPRAY_SHOTS, (now - T.fireT)/1000 * SPRAY_RPM/60);
+    const rc = this.sprayOffset(n, T.seed);
+    this.yaw   += rc[0] - T.lastAz;
+    this.pitch += rc[1] - T.lastEl;
+    T.lastAz = rc[0]; T.lastEl = rc[1];
+
+    const B = camBasis(this.yaw, this.pitch);
+    const ang = Math.acos(clamp(dot(dirFromAngles(this.yaw,this.pitch), this.target.dir),-1,1));
+    const deg = ang*R2D;
+    // 纵横分开记：纵向差 = 持续下拉执行不好，横向差 = 看着补的闭环跟不上，两者含义不同
+    const tg = tangentOf(this.target.dir, B);
+    T.frames++; T.errSq += deg*deg;
+    T.hSq += (tg[0]*R2D)**2; T.vSq += (tg[1]*R2D)**2;
+    if (ang < this.target.rad) T.on++;
+    const si = Math.floor(n);
+    if (si > T.lastShot){ T.lastShot = si; T.shots++; if (ang < this.target.rad) T.hitShots++; }
+    this.fb = ang < this.target.rad ? 'hit' : null;
+    if (n >= SPRAY_SHOTS) this.endSpray();
+  },
+  endSpray(){
+    const T = this.trial;
+    if (!T) return;
+    // 中途松手且样本太少的段直接丢弃，不进统计
+    if (T.frames > 40 && T.shots >= 12) this.record({kind:'spray',
+      rms:Math.sqrt(T.errSq/T.frames), rmsV:Math.sqrt(T.vSq/T.frames), rmsH:Math.sqrt(T.hSq/T.frames),
+      onTarget:T.on/T.frames, shots:T.shots, hitRate:T.shots?T.hitShots/T.shots:0, frames:T.frames});
+    this.trial=null; this.target=null; this.targets=null; this.fbT=performance.now();
+  },
+  onRelease(){
+    if (!this.running || this.paused) return;
+    const T = this.trial;
+    if (T && T.kind==='spray' && T.firing) this.endSpray();
+  },
+  hud(now){
+    const P = this.curPhase(), s = P.stop;
+    $('hudPhase').textContent = `${this.phase+1}/${this.phases.length}  ${P.name}`;
+    $('hudTip').textContent   = P.tip;
+    let prog, right;
+    if (P.kind==='track' && this.trial){
+      const T = this.trial, el = (performance.now()-T.t0)/1000;
+      prog  = (this.phaseTrials + el*1000/P.runMs)/s.trials;
+      right = `第 ${this.phaseTrials+1} / ${s.trials} 段 · 剩 ${Math.max(0,Math.ceil(P.runMs/1000-el))}s<br>` +
+              `在靶 ${T.frames?Math.round(T.on/T.frames*100):0}%`;
+    } else if (P.kind==='hold' && this.trial){
+      const T = this.trial;
+      prog  = (this.phaseTrials + (T.armed ? (performance.now()-T.startT)/P.runMs : 0))/s.trials;
+      right = T.armed
+        ? `第 ${this.phaseTrials+1} / ${s.trials} 段 · 剩 ${Math.max(0,Math.ceil((P.runMs-(performance.now()-T.startT))/1000))}s<br>在靶 ${T.frames?Math.round(T.on/T.frames*100):0}%`
+        : `第 ${this.phaseTrials+1} / ${s.trials} 段<br><span style="color:var(--acc2)">把准星压到靶上开始</span>`;
+    } else if (P.kind==='spray' && this.trial){
+      const T = this.trial;
+      prog  = (this.phaseTrials + (T.firing ? T.shots/SPRAY_SHOTS : 0))/s.trials;
+      right = T.firing
+        ? `第 ${this.phaseTrials+1} / ${s.trials} 段 · ${T.shots} / ${SPRAY_SHOTS} 发<br>在靶 ${T.frames?Math.round(T.on/T.frames*100):0}%`
+        : `第 ${this.phaseTrials+1} / ${s.trials} 段<br><span style="color:var(--acc2)">按住左键开火</span>`;
+    } else if (P.kind==='wave' && this.trial){
+      prog  = this.phaseTrials/s.trials;
+      right = `第 ${this.phaseTrials+1} / ${s.trials} 波<br>剩 ${(this.targets||[]).length} 个靶`;
+    } else if (s.trials){
+      prog  = this.phaseTrials/s.trials;
+      right = `有效 ${this.phaseTrials} / ${s.trials}`;
+    } else {
+      const st = trimmed(this.results.filter(r=>r.phase===P.id).map(r=>r.ratio));
+      const ci = st.n>1 ? 1.96*st.se : 0;
+      // 达到目标精度所需的试次数：n ∝ (sd/ci)²
+      const need   = (st.n>8 && st.sd) ? Math.ceil((1.96*st.sd/s.ci)**2) : s.minTrials;
+      const target = Math.max(s.minTrials, need);
+      prog = this.phaseTrials/target;
+      const rate = this.phaseTrials/Math.max(1,(now-this.phaseT0)/1000);
+      const eta  = rate>0 ? Math.max(0, Math.round((target-this.phaseTrials)/rate)) : 0;
+      right = `有效 ${this.phaseTrials}<br>精度 ${ci?'±'+(ci*100).toFixed(1)+'%':'—'} → 目标 ±${(s.ci*100).toFixed(1)}%<br>预计还需 ~${eta}s`;
+    }
+    $('hudR').innerHTML = right;
+    $('bar').style.width = clamp(Math.max(prog, (now-this.phaseT0)/s.maxMs),0,1)*100+'%';
+  },
+  pause(){
+    if (!this.running || this.paused) return;
+    this.paused = true;
+    this.pausedEl = performance.now() - this.phaseT0;   // 记住本阶段已用时长
+    this.pausedTrans = this.state==='trans' ? Math.max(0, this.transUntil - performance.now()) : 0;
+    this.trial=null; this.target=null; this.targets=null;
+    $('overlay').classList.remove('hidden');
+    $('ovTitle').textContent='已暂停';
+    $('ovBody').innerHTML='鼠标锁定已解除。点击下方按钮继续，计时会接着走。';
+    $('ovBtn').textContent='继续测试';
+    $('ovBtn').onclick = async ()=>{
+      const st = await requestLock($('cv'));
+      if (st==='failed') return;
+      $('overlay').classList.add('hidden');
+      this.paused=false;
+      const t = performance.now();
+      this.phaseT0 = t - this.pausedEl;                  // 接着走，不因暂停延长阶段
+      if (this.state==='trans') this.transUntil = t + Math.max(1200, this.pausedTrans);
+      this.fbT = t; this.lastFrame = t;
+    };
+  },
+  finish(){
+    this.running=false;
+    if (document.pointerLockElement) document.exitPointerLock();
+    if (cfg.mode==='ab')       showABResults(buildABReport(this.results));
+    else if (cfg.mode==='new') showSweepResults(buildSweepReport(this.results, SWEEP_CANDS||newbieCandidates()));
+    else                       showResults(buildReport(this.results));
+  }
+};
+
+/* ═══════════ 统计 ═══════════ */
+function trimmed(arr, frac=0.1){
+  if (!arr.length) return {mean:0,sd:0,n:0,se:0};
+  const s=[...arr].sort((a,b)=>a-b);
+  const k=Math.floor(s.length*frac);
+  const t=k*2 < s.length-2 ? s.slice(k, s.length-k) : s;
+  const n=t.length, mean=t.reduce((a,b)=>a+b,0)/n;
+  const sd = n>1 ? Math.sqrt(t.reduce((a,b)=>a+(b-mean)**2,0)/(n-1)) : 0;
+  return {mean, sd, n, se: n>1 ? sd/Math.sqrt(n) : 0};
+}
+const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0;
+const pctl = (a,q) => { if(!a.length) return 0; const s=[...a].sort((x,y)=>x-y);
+  return s[clamp(Math.floor(q*(s.length-1)),0,s.length-1)]; };
+/** 帧时间与输入滞留时长汇总 —— "感觉有延迟"要靠这个来定位是渲染卡还是输入慢 */
+function perfSummary(){
+  const g = Test.frameGaps.filter(x=>x>0 && x<200), a = Test.inputAge.filter(x=>x>=0 && x<200);
+  if (g.length < 100) return null;
+  const med = pctl(g,0.5);
+  return {
+    fps: med>0 ? Math.round(1000/med) : 0,
+    frameMed:+med.toFixed(2), frameP95:+pctl(g,0.95).toFixed(2), frameMax:+Math.max(...g).toFixed(1),
+    jank: g.filter(x=>x > med*2).length,          // 明显掉帧的次数
+    jankPct: +(g.filter(x=>x > med*2).length/g.length*100).toFixed(2),
+    inputMed: a.length ? +pctl(a,0.5).toFixed(2) : null,
+    inputP95: a.length ? +pctl(a,0.95).toFixed(2) : null,
+    n:g.length
+  };
+}
+const vari = a => { if (a.length<2) return 0; const m=avg(a);
+  return a.reduce((x,y)=>x+(y-m)**2,0)/(a.length-1); };
+/** 双侧 95% 的 t 临界值。小样本下用 1.96 会明显低估临界值、抬高假阳性。 */
+function tCrit95(df){
+  if (!isFinite(df) || df<=0) return Infinity;
+  const T=[[1,12.706],[2,4.303],[3,3.182],[4,2.776],[5,2.571],[6,2.447],[7,2.365],[8,2.306],
+           [9,2.262],[10,2.228],[12,2.179],[15,2.131],[20,2.086],[25,2.060],[30,2.042],
+           [40,2.021],[60,2.000],[120,1.980]];
+  if (df <= 1) return T[0][1];
+  for (let i=0;i<T.length-1;i++){
+    if (df >= T[i][0] && df < T[i+1][0]){
+      const [d0,t0]=T[i], [d1,t1]=T[i+1];
+      return t0 + (t1-t0)*(df-d0)/(d1-d0);
+    }
+  }
+  return 1.96;
+}
+/* 正则化不完全贝塔函数（连分数展开），用来算 t 分布的精确双侧 p 值。
+   有了 p 值才能做 Holm 校正 —— 四个维度各按 5% 判显著的话，
+   两个其实相同的灵敏度会有约 20% 的概率被报出"某项更优"。 */
+function betacf(a,b,x){
+  const EPS=3e-14, FPMIN=1e-300;
+  const qab=a+b, qap=a+1, qam=a-1;
+  let c=1, d=1-qab*x/qap;
+  if (Math.abs(d)<FPMIN) d=FPMIN;
+  d=1/d; let h=d;
+  for (let m=1;m<=200;m++){
+    const m2=2*m;
+    let aa=m*(b-m)*x/((qam+m2)*(a+m2));
+    d=1+aa*d; if (Math.abs(d)<FPMIN) d=FPMIN;
+    c=1+aa/c; if (Math.abs(c)<FPMIN) c=FPMIN;
+    d=1/d; h*=d*c;
+    aa=-(a+m)*(qab+m)*x/((a+m2)*(qap+m2));
+    d=1+aa*d; if (Math.abs(d)<FPMIN) d=FPMIN;
+    c=1+aa/c; if (Math.abs(c)<FPMIN) c=FPMIN;
+    d=1/d;
+    const del=d*c; h*=del;
+    if (Math.abs(del-1)<EPS) break;
+  }
+  return h;
+}
+function gammaln(x){
+  const C=[76.18009172947146,-86.50532032941677,24.01409824083091,
+           -1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5];
+  let y=x, tmp=x+5.5; tmp-=(x+0.5)*Math.log(tmp);
+  let ser=1.000000000190015;
+  for (let j=0;j<6;j++) ser+=C[j]/++y;
+  return -tmp+Math.log(2.5066282746310005*ser/x);
+}
+function betai(a,b,x){
+  if (x<=0) return 0;
+  if (x>=1) return 1;
+  const bt=Math.exp(gammaln(a+b)-gammaln(a)-gammaln(b)+a*Math.log(x)+b*Math.log(1-x));
+  return x < (a+1)/(a+b+2) ? bt*betacf(a,b,x)/a : 1-bt*betacf(b,a,1-x)/b;
+}
+/** t 分布双侧 p 值：P(|T| > t) = I_{df/(df+t²)}(df/2, 1/2) */
+function tPValue(t,df){
+  if (!isFinite(t) || !isFinite(df) || df<=0) return 1;
+  return clamp(betai(df/2, 0.5, df/(df+t*t)), 0, 1);
+}
+/** Welch t 检验（含 Welch–Satterthwaite 自由度）。样本少时不是排除，而是提高门槛。 */
+function welch(a,b){
+  if (a.length<4 || b.length<4) return {d:0, se:0, ci:0, p:1, sig:false, weak:true};
+  const na=a.length, nb=b.length, sa=vari(a)/na, sb=vari(b)/nb;
+  const se = Math.sqrt(sa+sb), d = avg(a)-avg(b);
+  if (!(se>0)) return {d, se:0, ci:0, df:0, p:1, sig:false, weak:false};
+  const df = (sa+sb)**2 / ((sa*sa)/(na-1) + (sb*sb)/(nb-1));
+  const tc = tCrit95(df), t = d/se;
+  return {d, se, df, t, p:tPValue(t,df), ci:tc*se, sig: Math.abs(d) > tc*se, weak:false};
+}
+/** Holm–Bonferroni：控制族错误率，比 Bonferroni 更有检出力。就地写回 c.sigAdj */
+function holm(cards, alpha){
+  const live = cards.filter(c=>!c.t.weak && isFinite(c.t.p));
+  const order = [...live].sort((a,b)=>a.t.p-b.t.p);
+  const n = order.length;
+  let stop = false;
+  order.forEach((c,i)=>{
+    const thr = alpha/(n-i);
+    if (!stop && c.t.p <= thr) c.sigAdj = true;
+    else { stop = true; c.sigAdj = false; }
+    c.thr = thr;
+  });
+  cards.forEach(c=>{ if (c.sigAdj===undefined) c.sigAdj = false; });
+  return cards;
+}
+/** 两比例检验（命中率对比） */
+function propTest(x1,n1,x2,n2){
+  if (!n1 || !n2) return {d:0, sig:false};
+  const p1=x1/n1, p2=x2/n2, p=(x1+x2)/(n1+n2);
+  const se=Math.sqrt(p*(1-p)*(1/n1+1/n2));
+  return {d:p1-p2, se, ci:1.96*se, sig: se>0 && Math.abs(p1-p2) > 1.96*se};
+}
+/** 最小二乘直线，返回斜率和截距 */
+function linfit(xs,ys){
+  const n=xs.length; if(n<3) return {slope:0, intercept:ys.length?avg(ys):0};
+  const mx=avg(xs), my=avg(ys);
+  let num=0, den=0;
+  for(let i=0;i<n;i++){ num+=(xs[i]-mx)*(ys[i]-my); den+=(xs[i]-mx)**2; }
+  const slope = den ? num/den : 0;
+  return {slope, intercept: my - slope*mx};
+}
+function linreg(xs,ys){
+  const n=xs.length; if(n<3) return 0;
+  const mx=xs.reduce((a,b)=>a+b,0)/n, my=ys.reduce((a,b)=>a+b,0)/n;
+  let num=0,den=0;
+  for(let i=0;i<n;i++){ num+=(xs[i]-mx)*(ys[i]-my); den+=(xs[i]-mx)**2; }
+  return den ? num/den : 0;
+}
+// 每个扇区 90°，完整覆盖 360°。用 45° 窄扇区会把对角线方向的试次全部丢掉，
+// 等于浪费一半样本 —— 对角试次同样携带方向信息，该归到最接近的象限里。
+const SECTORS = [
+  {k:'右', lo:-45, hi:45},   {k:'上', lo:45,  hi:135},
+  {k:'左', lo:135, hi:225},  {k:'下', lo:225, hi:315},
+];
+function sectorOf(phiDeg){
+  let p = ((phiDeg%360)+360)%360;
+  for (const s of SECTORS){
+    let lo=((s.lo%360)+360)%360, hi=((s.hi%360)+360)%360;
+    if (lo>hi ? (p>=lo||p<=hi) : (p>=lo&&p<=hi)) return s.k;
+  }
+  return null;
+}
+
+/** 逐次试次的导出格式，按类型给不同字段 */
+function exportTrial(r){
+  const base = {p:r.phase, k:r.kind||'flick'};
+  if (r.ab) base.ab = r.ab;
+  if (r.settle) base.s = 1;
+  if (r.kind==='track') return Object.assign(base,
+    {on:+r.onTarget.toFixed(4), err:+r.meanErr.toFixed(3), rms:+r.rmsErr.toFixed(3), f:r.frames});
+  if (r.kind==='wave') return Object.assign(base,
+    {cnt:r.count, ms:Math.round(r.clearMs), per:Math.round(r.perTargetMs),
+     path:+(r.pathDeg||0).toFixed(1), msdeg:+(r.msPerDeg||0).toFixed(1),
+     id:+(r.idSum||0).toFixed(2), tp:+(r.tp||0).toFixed(2), ok:r.complete===false?0:1,
+     shots:r.shots, hits:r.hits, acc:+r.acc.toFixed(3)});
+  if (r.kind==='spray') return Object.assign(base,
+    {rms:+r.rms.toFixed(3), rmsV:+r.rmsV.toFixed(3), rmsH:+r.rmsH.toFixed(3),
+     on:+r.onTarget.toFixed(4), hit:+r.hitRate.toFixed(3), n:r.shots, f:r.frames});
+  if (r.kind==='hold') return Object.assign(base,
+    {on:+(r.onTarget||0).toFixed(4), rms:+r.rms.toFixed(4), max:+r.maxErr.toFixed(3), f:r.frames});
+  return Object.assign(base, {
+    deg:+r.reqDeg.toFixed(2),        // 所需角度
+    r:+r.ratio.toFixed(4),           // 落点比值
+    phi:+(r.phi*R2D).toFixed(1),     // 方向
+    stop:Math.round(r.stopMs),       // 首次停枪耗时
+    tot:Math.round(r.totalMs),       // 到命中的总耗时
+    c:r.corr, h:r.hit?1:0, n:r.shots||1,
+    pk:Math.round(r.peak)            // 峰值角速度
+  });
+}
+function buildReport(all){
+  const mainRaw = all.filter(r=>r.phase==='main');
+  const main  = mainRaw.filter(r=>r.ratio>0.3 && r.ratio<2.2);
+  const turn  = all.filter(r=>r.phase==='turn');
+  const track = all.filter(r=>r.kind==='track');
+  const hold  = all.filter(r=>r.kind==='hold');
+  const corr  = all.filter(r=>r.kind==='correct');
+  const wave  = all.filter(r=>r.kind==='wave');
+  const spray = all.filter(r=>r.kind==='spray');
+  const st = trimmed(main.map(r=>r.ratio));
+  // n=0 时 trimmed 返回 mean=0，直接减 1 会得到 -100% 的偏差和 Infinity 的推荐值。
+  // clamp 是安全网：ratio 已过滤到 [0.3,2.2]，正常不可能触发。
+  const bias = st.n ? clamp(st.mean - 1, -0.5, 0.5) : 0;
+  const ci95 = 1.96*st.se;
+
+  /* ── 适应曲线 ──
+     人在十几次甩枪内就会用视觉反馈校准到当前灵敏度，所以主测阶段的偏差
+     只反映"适应之后的残差"，对任何灵敏度都会趋近 0。真正的习惯匹配信号
+     只存在于最开始那几次里。把热身 + 主测按时间顺序拼起来取前 12 次，
+     这段的偏差才是"这个灵敏度和你原本的肌肉记忆差多少"。
+     注意窗口要放宽到 [0.05,3]：错配严重时比值会掉到 0.3 以下，用主测的
+     过滤窗口会把左尾裁掉、把偏差估计拉向 0。 */
+  const seq   = all.filter(r=>r.phase==='warmup').concat(mainRaw);
+  /* 逐次算出"你的手实际按什么节奏在动"：
+       需要转 A 度 → 手走了 N 个计数 → 肌肉记忆认为「N 计数 = A 度」
+       → 手的节奏 = (N/A) × 360 / DPI × 2.54  cm/360
+     只用到 A（我设的）、N（我测的）、DPI（硬件），不含任何拟合参数，
+     而且这个数<b>可以和用户的设置矛盾</b> —— 那才是它有用的地方。 */
+  const paceOf = r => (r.ratio||0) * cm360(cfg.dpi, r.sens || cfg.sens);
+  const pace = seq.filter(r=>r.ratio>0.05 && r.ratio<3).map(paceOf);
+  const median = a => { if(!a.length) return 0; const s=[...a].sort((x,y)=>x-y);
+    const m=s.length>>1; return s.length%2 ? s[m] : (s[m-1]+s[m])/2; };
+  const paceEarly = median(pace.slice(0,5));    // 中位数，无模型、无拟合
+  const paceLate  = median(pace.slice(-30));
+  const early = seq.slice(0, 12).filter(r=>r.ratio>0.05 && r.ratio<3);
+  const eSt   = trimmed(early.map(r=>r.ratio), 0.05);
+  const earlyBias = eSt.n ? eSt.mean-1 : 0;
+  const earlyCi   = 1.96*eSt.se;
+  // 开头偏差既大又显著 → 你在测试过程中才适应过来，说明这个灵敏度不是你习惯的
+  const adapting = eSt.n >= 8 && Math.abs(earlyBias) > 0.15 && Math.abs(earlyBias) > earlyCi;
+  /* 习惯灵敏度 = 开头几次的实测节奏，直接取中位数。
+     这里刻意不做曲线拟合外推：外推需要假设一条适应曲线，而真人的适应动力学
+     我并不知道。之前用最小二乘外推、再按"能否还原出用户自称的值"去挑窗口长度，
+     那是把参数拟合到我自己的假设上，不是测量。
+     中位数只用原始数据，代价是仍含一部分适应成分 → 结果偏向当前设置，
+     所以它是<b>下限</b>：真实错配只会比它更大，不会更小。 */
+  const habitSens = paceEarly > 0 ? sensFromCm(cfg.dpi, paceEarly) : null;
+
+  const cmNow = cm360(cfg.dpi,cfg.sens);
+
+  // 只在样本足够、偏差超过 5%、且统计显著时才建议改动
+  const enough = st.n >= 25;
+  const sig = enough && Math.abs(bias) > ci95;
+  let verdict = 'keep';
+  if (!enough) verdict = 'nodata';
+  else if (adapting) verdict = 'adapting';      // 优先级高于主偏差
+  else if (sig && Math.abs(bias) > 0.15) verdict='chg';
+  else if (sig && Math.abs(bias) > 0.05) verdict='tune';
+
+  const newSens = cfg.sens/(1+bias);
+
+  const byDir = SECTORS.map(s=>{
+    const g = main.filter(r=>sectorOf(r.phi*R2D)===s.k);
+    return {k:s.k, n:g.length, bias: g.length>=10 ? trimmed(g.map(r=>r.ratio)).mean-1 : null};
+  });
+  const slope = linreg(main.map(r=>r.reqDeg), main.map(r=>r.ratio));
+
+  return {
+    cfg:{...cfg}, verdict, bias, ci95, n:st.n, sd:st.sd,
+    earlyBias, earlyCi, earlyN:eSt.n, adapting, habitSens,
+    paceEarly, paceLate, paceSeries: pace.slice(0,40).map(v=>+v.toFixed(1)), paceN: pace.length,
+    newSens, cmNow, cmNew: cmNow*(1+bias),
+    hitRate: main.length ? main.filter(r=>r.hit).length/main.length : 0,
+    stopMs: main.length ? main.reduce((a,r)=>a+r.stopMs,0)/main.length : 0,
+    totalMs: main.length ? main.reduce((a,r)=>a+r.totalMs,0)/main.length : 0,
+    corr: main.length ? main.reduce((a,r)=>a+r.corr,0)/main.length : 0,
+    turnMs: turn.length ? turn.reduce((a,r)=>a+r.totalMs,0)/turn.length : 0,
+    turnN: turn.length,
+    byDir, slope,
+    // 跟枪：闭环控制能力
+    track: track.length ? {n:track.length, onTarget:avg(track.map(r=>r.onTarget)),
+      meanErr:avg(track.map(r=>r.meanErr)), rmsErr:avg(track.map(r=>r.rmsErr))} : null,
+    // 微控：慢速漂移靶上的精细控制精度
+    hold: hold.length ? {n:hold.length, rms:avg(hold.map(r=>r.rms)),
+      onTarget:avg(hold.map(r=>r.onTarget||0)), maxErr:avg(hold.map(r=>r.maxErr))} : null,
+    /* 压枪：单独输出，**不进 A/B 记分卡**。
+       记分卡是四维 + Holm 校正（当初把整体假阳性从 19.7% 压到 4.0% 靠的就是它），
+       加第五维会让 Holm 更严、拖累现有四项的检出力。信息照给，统计家族不动。 */
+    spray: spray.length ? {n:spray.length, rms:avg(spray.map(r=>r.rms)),
+      rmsV:avg(spray.map(r=>r.rmsV)), rmsH:avg(spray.map(r=>r.rmsH)),
+      onTarget:avg(spray.map(r=>r.onTarget)), hitRate:avg(spray.map(r=>r.hitRate))} : null,
+    // 修正：必须命中才结束，这里的修正次数才是有信息的
+    wave: (()=>{ const w = wave.filter(r=>r.complete!==false);
+      return w.length ? {n:w.length, dropped:wave.length-w.length, clearMs:avg(w.map(r=>r.clearMs)), perTargetMs:avg(w.map(r=>r.perTargetMs)),
+        acc:avg(w.map(r=>r.acc)), shots:avg(w.map(r=>r.shots)), targets:avg(w.map(r=>r.count)),
+        pathDeg:avg(w.map(r=>r.pathDeg||0)), msPerDeg:avg(w.map(r=>r.msPerDeg||0)),
+        tp:avg(w.map(r=>r.tp||0)),
+        // 哪种归一化适合这个人：比较 t=c·path 与 t=a+b·idSum 的拟合残差
+        fit:(()=>{
+          if (w.length < 6) return null;
+          const t = w.map(r=>r.clearMs), pa = w.map(r=>r.pathDeg||0), id = w.map(r=>r.idSum||0);
+          const rss = (pred)=>t.reduce((s,v,i)=>s+(v-pred[i])**2,0);
+          const c = t.reduce((s,v,i)=>s+v*pa[i],0)/Math.max(1e-9, pa.reduce((s,v)=>s+v*v,0));
+          const lin = rss(pa.map(x=>c*x));
+          const f = linfit(id, t);
+          const fit = rss(id.map(x=>f.intercept+f.slope*x));
+          const tot = rss(t.map(()=>avg(t)));
+          return {linR2:+(1-lin/tot).toFixed(3), fittsR2:+(1-fit/tot).toFixed(3),
+                  better: lin<fit ? 'msPerDeg' : 'throughput'};
+        })()} : null; })(),
+    corr2: corr.length ? {n:corr.length, corr:avg(corr.map(r=>r.corr)),
+      shots:avg(corr.map(r=>r.shots)), timeMs:avg(corr.map(r=>r.totalMs))} : null,
+    hz: Input.measuredHz(), tsRes: Input.tsResolution(), perf: perfSummary(),
+    lockMode: LOCK_MODE, ts: Date.now(),
+    // 逐次原始试次：汇总值看不出"为什么有效试次少"这类问题，诊断必须靠它
+    trials: all.map(r=>exportTrial(r))
+  };
+}
+
+/* ═══════════ A/B 对比 ═══════════ */
+function buildABReport(all){
+  // settle 试次（切换灵敏度后的前 5 次）不参与分析
+  const live = all.filter(r=>!r.settle);
+  const flickOf = k => live.filter(r=>r.ab===k && (r.kind==='flick'||!r.kind) && r.ratio>0.3 && r.ratio<2.2);
+  const kindOf  = (k,kind) => live.filter(r=>r.ab===k && r.kind===kind);
+
+  const stat = (k)=>{
+    const rs = flickOf(k), tk = kindOf(k,'track'), hd = kindOf(k,'hold'), co = kindOf(k,'correct');
+    // 甩枪主指标：首次停枪的角落点误差（度）。它和点击时机无关 ——
+    // 命中率会被"甩到就开枪 vs 等准星稳一下"污染，实测能差一倍。
+    const err = rs.map(r=>Math.abs(r.ratio-1)*r.reqDeg);
+    const tr  = trimmed(rs.map(r=>r.ratio));
+    return {
+      n:rs.length, errArr:err, err:avg(err), errSd:Math.sqrt(vari(err)),
+      hits:rs.filter(r=>r.hit).length,
+      hit: rs.length ? rs.filter(r=>r.hit).length/rs.length : 0,
+      bias: rs.length ? tr.mean-1 : 0, scatter: tr.sd,
+      stopMs: avg(rs.map(r=>r.stopMs)), totalMs: avg(rs.map(r=>r.totalMs)),
+      trackArr: tk.map(r=>r.onTarget), track: avg(tk.map(r=>r.onTarget)), trackN: tk.length,
+      trackErr: avg(tk.map(r=>r.meanErr)),
+      holdArr: hd.map(r=>r.rms), hold: avg(hd.map(r=>r.rms)), holdN: hd.length,
+      corrArr: co.map(r=>r.corr), corr: avg(co.map(r=>r.corr)), corrN: co.length,
+      shots: avg(co.map(r=>r.shots))
+    };
+  };
+  const A = stat('A'), B = stat('B');
+  const errT   = welch(A.errArr, B.errArr);
+  const hitT   = propTest(A.hits, A.n, B.hits, B.n);
+  const timeT  = welch(flickOf('A').map(r=>r.totalMs), flickOf('B').map(r=>r.totalMs));
+  const trackT = welch(A.trackArr, B.trackArr);
+  const holdT  = welch(A.holdArr,  B.holdArr);
+  const corrT  = welch(A.corrArr,  B.corrArr);
+
+  // 记分卡：各维度独立判胜，全部一致才给强结论，分裂就如实说明
+  const card = [
+    {k:'flick', name:'甩枪落点误差', why:'第一次停枪离靶心多远', unit:'°', a:A.err,   b:B.err,   low:true,  t:errT},
+    {k:'track', name:'跟枪在靶率',   why:'快速移动靶上压住的时间占比', unit:'%', a:A.track, b:B.track, low:false, t:trackT},
+    {k:'hold',  name:'微控偏离',     why:'慢速漂移靶上偏离靶心的角度', unit:'°', a:A.hold,  b:B.hold,  low:true,  t:holdT},
+    {k:'corr',  name:'修正次数',     why:'停枪后要来回拉几次', unit:'',  a:A.corr,  b:B.corr,  low:true,  t:corrT},
+  ];
+  // 四个维度一起判会把整体假阳性率推到约 20%，必须做多重比较校正
+  holm(card, 0.05);
+  card.forEach(c=>{
+    const ok = c.sigAdj && isFinite(c.a) && isFinite(c.b);
+    c.win = ok ? ((c.low ? c.a<c.b : c.a>c.b) ? 'A':'B') : null;
+  });
+  const wins = card.filter(c=>c.win);
+  const aw = wins.filter(c=>c.win==='A').length, bw = wins.filter(c=>c.win==='B').length;
+  let winner=null, split=false;
+  if (aw && bw){ split=true; winner = aw>bw ? 'A' : bw>aw ? 'B' : null; }
+  else if (aw) winner='A';
+  else if (bw) winner='B';
+
+  return {
+    mode:'ab', cfg:{...cfg}, A, B, errT, hitT, timeT, trackT, holdT, corrT, card, winner, split,
+    sensA:cfg.sensA, sensB:cfg.sensB,
+    cmA:cm360(cfg.dpi,cfg.sensA), cmB:cm360(cfg.dpi,cfg.sensB),
+    hz:Input.measuredHz(), tsRes:Input.tsResolution(), perf:perfSummary(),
+    lockMode:LOCK_MODE, ts:Date.now(),
+    trials: all.map(r=>exportTrial(r))
+  };
+}
+
+function showABResults(R){
+  try{ localStorage.setItem(RES_KEY, JSON.stringify(R)); }catch(e){}
+  if (!R._replay){ R._replay=1; saveHistory(R); }
+  $('screenTest').classList.add('hidden'); $('screenSetup').classList.add('hidden');
+  const el = $('screenResult'); el.classList.remove('hidden');
+
+  const w = R.winner;
+  const side = (k, S, sens, cm) => `
+    <div class="side ${w===k?'win':''}">
+      <div class="sl">灵敏度 ${k}</div>
+      <div class="sv" style="color:${w===k?'var(--ok)':'var(--fg)'}">${sens}</div>
+      <div class="sc">${cm.toFixed(1)} cm/360 · ${S.n} 次有效</div>
+      ${w===k?'<div class="badge">更优</div>':''}
+    </div>`;
+
+  const wins = (R.card||[]).filter(c=>c.win);
+  const nameOf = c=>c.name;
+  let head, body;
+  if (!w && !R.split){
+    const mdd = R.A.err ? R.errT.ci/R.A.err*100 : 0;
+    head = '两个灵敏度没有显著差异';
+    body = `四个维度（甩枪、跟枪、微控、修正）<b>没有一项</b>达到统计显著。
+            <br><br>这说明<b>换灵敏度不会带来立竿见影的提升</b>。如果你在瓶颈期，问题多半不在灵敏度上，
+            调整握法、坐姿、鼠标垫空间或者预瞄习惯可能更有用。
+            <br><br><span style="color:var(--dim2)">注意样本量的限制：甩枪这项能可靠检出的最小差异约为 <b>${mdd.toFixed(0)}%</b>，
+            比这更小的差距测不出来。"没差异"意味着"差距不大到值得为它折腾"，不是"绝对相同"。</span>`;
+  } else if (R.split){
+    const aw = wins.filter(c=>c.win==='A'), bw = wins.filter(c=>c.win==='B');
+    head = w ? `灵敏度 ${w} 略优，但结果是分裂的` : '两个灵敏度各有胜负';
+    body = `<b>A 赢在</b>${aw.map(nameOf).join('、')}；<b>B 赢在</b>${bw.map(nameOf).join('、')}。
+            <br><br>这不是坏结果，是有信息的结果：说明这两个灵敏度在<b>不同能力维度上各有取舍</b>，
+            没有一个全面占优。该选哪个取决于你的打法 ——
+            偏架点/静步对枪的选<b>微控和修正</b>更好的那个；偏突破/近距离缠斗的选<b>甩枪和跟枪</b>更好的那个。`;
+  } else {
+    const lose = w==='A'?'B':'A';
+    head = `灵敏度 ${w} 更优`;
+    body = `${w} 在 <b>${wins.map(nameOf).join('、')}</b> 上显著更好，且没有任何一项输给 ${lose}。
+            <br><br>多个维度指向同一个结论，比单指标的判断可信得多。
+            <br><br>注意这测的是<b>即时表现</b>。你对两个灵敏度的熟悉程度不同，练上两周结果可能会变。
+            如果 ${w} 正好是你不常用的那个，这个优势更值得认真对待。`;
+  }
+
+  const row = (name, a, b, better, unit='') => {
+    const aBet = better==='low' ? a<b : a>b;
+    const c = v=>`<span style="font-family:var(--mono);font-weight:600">${v}</span>`;
+    return `<tr><td>${name}</td>
+      <td style="text-align:right;color:${aBet?'var(--ok)':'var(--fg)'}">${c(a.toFixed(unit==='%'?0:2))}${unit}</td>
+      <td style="text-align:right;color:${!aBet?'var(--ok)':'var(--fg)'}">${c(b.toFixed(unit==='%'?0:2))}${unit}</td></tr>`;
+  };
+
+  el.innerHTML = `
+  <div class="hd"><h1>灵敏度对比结果</h1><span class="tag">A/B</span></div>
+  <div class="verdict ${w?'keep':'tune'}">
+    <div class="lbl">结论</div>
+    <h2>${head}</h2>
+    <p>${body}</p>
+    ${w ? `<div class="cmd" style="margin-top:20px">
+      <code id="cmdTxt">sensitivity ${(w==='A'?R.sensA:R.sensB).toFixed(2)}</code>
+      <button class="cpy" id="btnCopy">复制</button></div>` : ''}
+  </div>
+
+  <div class="card">
+    <h2>对比</h2>
+    <div class="cmp">
+      ${side('A', R.A, R.sensA, R.cmA)}
+      <div class="vs">VS</div>
+      ${side('B', R.B, R.sensB, R.cmB)}
+    </div>
+    <div class="scard">
+      <div class="sh"><span>维度</span><span>A = ${R.sensA}</span><span>B = ${R.sensB}</span><span>判定</span></div>
+      ${(R.card||[]).map(c=>{
+        const f = v => !isFinite(v) ? '—' : (c.unit==='%' ? (v*100).toFixed(0) : v.toFixed(c.k==='hold'?3:2))+c.unit;
+        const hi = s => c.win===s ? 'style="color:var(--ok);font-weight:700"' : '';
+        const p = c.t.weak ? '样本不足' : (c.t.p<0.001 ? 'p<0.001' : 'p='+c.t.p.toFixed(3));
+        return `<div class="sr">
+          <span>${c.name}<span class="su">${c.why} · ${c.low?'越小越好':'越大越好'} · ${p}</span></span>
+          <span ${hi('A')}>${f(c.a)}</span><span ${hi('B')}>${f(c.b)}</span>
+          <span class="sv2">${c.win ? c.win+' 胜' : '无差异'}</span></div>`;
+      }).join('')}
+    </div>
+    <table class="dt" style="margin-top:20px">
+      <tr><td style="color:var(--dim2);font-size:12px">辅助数据</td>
+          <td style="text-align:right;color:var(--dim2);font-size:12px">A = ${R.sensA}</td>
+          <td style="text-align:right;color:var(--dim2);font-size:12px">B = ${R.sensB}</td></tr>
+      ${row('命中率', R.A.hit*100, R.B.hit*100, 'high', '%')}
+      ${row('落点一致性 <span class="sm">稳不稳，不是准不准</span>', R.A.scatter*100, R.B.scatter*100, 'low', '%')}
+      ${row('首次停枪耗时', R.A.stopMs, R.B.stopMs, 'low', ' ms')}
+      ${row('跟枪平均角距离', R.A.trackErr, R.B.trackErr, 'low', '°')}
+      ${row('修正阶段平均枪数', R.A.shots, R.B.shots, 'low', ' 枪')}
+      ${row('习惯匹配偏差 <span class="sm">离 0 越近越顺手</span>', R.A.bias*100, R.B.bias*100, 'low', '%')}
+    </table>
+    <div class="note" style="margin-top:18px">
+      主指标用角落点误差而非命中率：命中率会被点击时机污染。四项一起判已做 Holm 多重比较校正。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>测试有效性</h2>
+    <table class="dt">
+      <tr><td>有效样本 <span class="sm">已剔除每块前 5 次适应期</span></td><td>A ${R.A.n} · B ${R.B.n}</td></tr>
+      <tr><td>分块方式</td><td>ABABAB 交替 · 各 3 块</td></tr>
+      <tr><td>实测回报率 <span class="sm">设置值 ${R.cfg.poll} Hz</span></td><td>${R.hz||'—'} Hz</td></tr>
+      <tr><td>原始输入模式</td><td>${R.lockMode==='raw'?'已绕过系统加速':R.lockMode}</td></tr>
+    </table>
+    ${R.errT.weak ? `<div class="note w" style="margin-top:16px"><b>样本量偏少</b>，两组各需至少 8 次有效试次才能做统计比较。建议重测。</div>` : ''}
+  </div>
+
+  <div class="row">
+    <button class="btn" id="btnAgain">再测一次</button>
+    <button class="btn gh" id="btnBack">返回设置</button>
+    <button class="btn gh" id="btnExport">导出 JSON</button>
+  </div>
+  <p style="color:var(--dim2);font-size:12px;margin-top:22px">
+    比较的是<b style="color:var(--dim)">即时表现</b>，不预测长期适应后的上限。差异不显著时最稳妥的做法是别换。</p>`;
+
+  const cp = $('btnCopy');
+  if (cp) cp.onclick = ()=>navigator.clipboard.writeText($('cmdTxt').textContent)
+    .then(()=>{ cp.textContent='已复制'; setTimeout(()=>cp.textContent='复制',1400); }).catch(()=>{});
+  $('btnAgain').onclick = ()=>{ el.classList.add('hidden'); beginTest(); };
+  $('btnBack').onclick  = ()=>{ el.classList.add('hidden'); $('screenSetup').classList.remove('hidden'); renderHistory(); window.scrollTo(0,0); };
+  $('btnExport').onclick = ()=>{
+    const b = new Blob([JSON.stringify(R,null,2)],{type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = `${(R.cfg&&R.cfg.game&&GAMES[R.cfg.game]?GAMES[R.cfg.game]:G).filePrefix}-ab-${(R.cfg&&R.cfg.who?R.cfg.who.replace(/[^\w一-龥-]/g,'')+'-':'')}${new Date(R.ts).toISOString().slice(0,16).replace(/[:T]/g,'')}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+  window.scrollTo(0,0);
+}
+
+
+/* ═══════════ 新手扫描 ═══════════ */
+function buildSweepReport(all, cands){
+  const live = all.filter(r=>!r.settle);
+  const K = cands.map((_,i)=>'C'+(i+1));
+  const S = K.map((k,i)=>{
+    const fl = live.filter(r=>r.ab===k && r.kind==='flick' && r.ratio>0.3 && r.ratio<2.2);
+    const tk = live.filter(r=>r.ab===k && r.kind==='track');
+    const hd = live.filter(r=>r.ab===k && r.kind==='hold');
+    const err = fl.map(r=>Math.abs(r.ratio-1)*r.reqDeg);
+    return {k, sens:cands[i].sens, cm:cands[i].cm, n:fl.length,
+      errArr:err, err:avg(err), errCi:fl.length>1 ? 1.96*Math.sqrt(vari(err)/err.length) : 0,
+      hit: fl.length ? fl.filter(r=>r.hit).length/fl.length : 0,
+      trackArr:tk.map(r=>r.onTarget), track:avg(tk.map(r=>r.onTarget)),
+      holdArr:hd.map(r=>r.rms), hold:avg(hd.map(r=>r.rms))};
+  });
+  // 候选两两比较主指标（甩枪角落点误差），Holm 校正
+  const N = S.length, pairs = [];
+  for (let i=0;i<N;i++) for (let j=i+1;j<N;j++) pairs.push({i, j, t:welch(S[i].errArr, S[j].errArr)});
+  holm(pairs, 0.05);
+  const pairOf = (a,b) => pairs.find(p=>(p.i===a&&p.j===b)||(p.i===b&&p.j===a));
+
+  const bi = S.reduce((best,s,i)=> s.err < S[best].err ? i : best, 0);
+  // 与最优候选没有显著差异的，都算进推荐区间 —— 新手该拿到的是区间，不是一个假装精确的点
+  const plateau = S.filter((s,i)=> i===bi || !(pairOf(bi,i)||{}).sigAdj);
+  const cms = plateau.map(s=>s.cm);
+  return {
+    mode:'new', cfg:{...cfg}, cands, S, pairs, bi,
+    best:S[bi], plateau, lo:Math.min(...cms), hi:Math.max(...cms),
+    decisive: plateau.length===1,
+    hz:Input.measuredHz(), tsRes:Input.tsResolution(), perf:perfSummary(),
+    lockMode:LOCK_MODE, ts:Date.now(),
+    trials: all.map(r=>exportTrial(r))
+  };
+}
+
+function showSweepResults(R){
+  try{ localStorage.setItem(RES_KEY, JSON.stringify(R)); }catch(e){}
+  if (!R._replay){ R._replay=1; saveHistory(R); }
+  $('screenTest').classList.add('hidden'); $('screenSetup').classList.add('hidden');
+  const el = $('screenResult'); el.classList.remove('hidden');
+
+  const maxErr = Math.max(...R.S.map(s=>s.err)) || 1;
+  const bars = R.S.map((s,i)=>{
+    const w = s.err/maxErr*100;
+    const inP = R.plateau.includes(s);
+    const c = i===R.bi ? 'var(--ok)' : inP ? 'var(--acc)' : 'var(--dim2)';
+    return `<div class="brow" style="grid-template-columns:104px 1fr 96px">
+      <span class="nm">${s.cm.toFixed(0)} cm/360<span style="display:block;font-size:11px;color:var(--dim2)">sens ${s.sens}</span></span>
+      <div class="btrack" style="height:26px">
+        <div class="bfill" style="left:0;width:${w}%;background:${c}"></div>
+      </div>
+      <span class="vl">${s.err.toFixed(2)}°<span style="display:block;font-size:11px;color:var(--dim2)">±${s.errCi.toFixed(2)}</span></span>
+    </div>`;
+  }).join('');
+
+  const rec = R.decisive ? R.best.sens
+            : R.S.filter(s=>R.plateau.includes(s)).sort((a,b)=>Math.abs(a.cm-(R.lo+R.hi)/2)-Math.abs(b.cm-(R.lo+R.hi)/2))[0].sens;
+
+  el.innerHTML = `
+  <div class="hd"><h1>新手扫描结果</h1><span class="tag">${R.S.length} 档</span></div>
+
+  <div class="verdict ${R.decisive?'keep':'tune'}">
+    <div class="lbl">建议起点</div>
+    <h2>${R.decisive ? `就用 ${R.best.cm.toFixed(0)} cm/360` : `${R.lo.toFixed(0)}–${R.hi.toFixed(0)} cm/360 都可以`}</h2>
+    <p>${R.decisive
+      ? `这一档的甩枪落点误差显著低于另外两档，方向比较明确。`
+      : `这几档之间<b>没有统计上的显著差异</b> —— 对现阶段的你来说它们一样好。从里面挑一个顺手的，然后就别再改了。`}</p>
+    <div class="sensbox">
+      <div class="sensbig">${rec.toFixed(2)}</div>
+      <div style="font-size:12.5px;color:var(--dim)">DPI ${R.cfg.dpi} 下的推荐值<br>${cm360(R.cfg.dpi,rec).toFixed(1)} cm/360</div>
+    </div>
+    <div class="cmd">
+      <code id="cmdTxt">sensitivity ${rec.toFixed(2)}</code>
+      <button class="cpy" id="btnCopy">复制</button>
+    </div>
+  </div>
+
+  <div class="note w">
+    <b>把这个值固定下来，至少练一个月别动。</b>新手阶段的进步几乎全部来自练习量，反复改灵敏度会让肌肉记忆一直建立不起来。
+  </div>
+
+  <div class="card">
+    <h2>${R.S.length} 档对比 · 甩枪落点误差（越小越好）</h2>
+    <div class="bars">${bars}</div>
+    <table class="dt" style="margin-top:22px">
+      <tr><td style="color:var(--dim2);font-size:12px">辅助指标</td>
+        ${R.S.map(s=>`<td style="text-align:right;color:var(--dim2);font-size:12px">${s.cm.toFixed(0)}cm</td>`).join('')}</tr>
+      <tr><td>命中率</td>${R.S.map(s=>`<td style="text-align:right">${(s.hit*100).toFixed(0)}%</td>`).join('')}</tr>
+      <tr><td>跟枪在靶率</td>${R.S.map(s=>`<td style="text-align:right">${isFinite(s.track)?(s.track*100).toFixed(0)+'%':'—'}</td>`).join('')}</tr>
+      <tr><td>微控偏离</td>${R.S.map(s=>`<td style="text-align:right">${isFinite(s.hold)?s.hold.toFixed(3)+'°':'—'}</td>`).join('')}</tr>
+      <tr><td>有效甩枪次数</td>${R.S.map(s=>`<td style="text-align:right">${s.n}</td>`).join('')}</tr>
+    </table>
+    <div class="note" style="margin-top:18px">
+      ${R.cfg.candMode==='custom' ? '候选值由你指定' : `候选按<b>${({arm:'手臂流',hybrid:'混合流',wrist:'手腕流'})[R.cfg.grip]}</b>常见区间等比取值`}，两轮顺序相反以抵消疲劳。
+      两两比较已做 Holm 校正，"无显著差异"意味着差距不值得纠结。
+    </div>
+  </div>
+
+  <div class="row">
+    <button class="btn" id="btnAgain">再测一次</button>
+    <button class="btn gh" id="btnBack">返回设置</button>
+    <button class="btn gh" id="btnExport">导出 JSON</button>
+  </div>`;
+
+  $('btnCopy').onclick = ()=>navigator.clipboard.writeText($('cmdTxt').textContent)
+    .then(()=>{ $('btnCopy').textContent='已复制'; setTimeout(()=>$('btnCopy').textContent='复制',1400); }).catch(()=>{});
+  $('btnAgain').onclick = ()=>{ el.classList.add('hidden'); beginTest(); };
+  $('btnBack').onclick  = ()=>{ el.classList.add('hidden'); $('screenSetup').classList.remove('hidden'); renderHistory(); window.scrollTo(0,0); };
+  $('btnExport').onclick = ()=>{
+    const b = new Blob([JSON.stringify(R,null,2)],{type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = `${(R.cfg&&R.cfg.game&&GAMES[R.cfg.game]?GAMES[R.cfg.game]:G).filePrefix}-newbie-${(R.cfg&&R.cfg.who?R.cfg.who.replace(/[^\w一-龥-]/g,'')+'-':'')}${new Date(R.ts).toISOString().slice(0,16).replace(/[:T]/g,'')}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+  window.scrollTo(0,0);
+}
+
+/* ═══════════ 结果页 ═══════════ */
+const pct = v => (v>=0?'+':'') + (v*100).toFixed(1) + '%';
+
+function showResults(R){
+  try{ localStorage.setItem(RES_KEY, JSON.stringify(R)); }catch(e){}
+  if (!R._replay){ R._replay=1; saveHistory(R); }
+  $('screenTest').classList.add('hidden');
+  $('screenSetup').classList.add('hidden');
+  const el = $('screenResult');
+  el.classList.remove('hidden');
+
+  const V = {
+    keep  :{lbl:'结论', h:'保持不变', p:'你的甩枪落点没有系统性偏差，当前灵敏度和你的肌肉记忆是匹配的。别乱改。'},
+    tune  :{lbl:'结论', h:'建议微调', p:'检测到轻微但稳定的落点偏差，小幅调整后手感应该会更跟手。'},
+    chg   :{lbl:'结论', h:'建议调整（分次过渡）', p:'落点偏差比较明显。但一次性大幅改灵敏度会毁掉肌肉记忆，建议分 2–3 次过渡。'},
+    nodata:{lbl:'无结论', h:'有效数据不足', p:'这次没采集到足够的弹道甩枪试次，给不出判断。最常见的原因是甩枪太慢——工具靠"加速到峰值再减速停住"这个特征来识别首次停枪，慢慢挪过去是识别不出来的。重测一次，出靶后果断甩过去。'},
+    adapting:{lbl:'结论', h:'这个灵敏度不是你习惯的', p:'开头几次甩枪有明显的系统性偏差，之后才逐渐修正过来 —— 说明你是在测试过程中<b>临时适应</b>了它，而不是本来就习惯。<br>下面给的"你原本的节奏"只是<b>方向和下限</b>，不是准确值（真实差距比它更大）。要拿准确推荐值请用对比或扫描模式。'}
+  }[R.verdict];
+
+  const adapt = R.verdict==='adapting' && R.habitSens;
+  const useNew = (R.verdict==='tune' || R.verdict==='chg') || adapt;
+  const shownSens = adapt ? R.habitSens : (useNew ? R.newSens : cfg.sens);
+  const shownCm   = cm360(cfg.dpi, shownSens);
+  const dirBias = R.bias > 0 ? '过冲（甩过头）' : '欠冲（甩不到位）';
+  const step1 = cfg.sens + (R.newSens-cfg.sens)*0.5;
+
+  let biasLine;
+  if (R.verdict==='adapting')
+    biasLine = `<b>开头 ${R.earlyN} 次：${pct(R.earlyBias)}</b>（±${(R.earlyCi*100).toFixed(1)}%）→
+      <b>主测 ${R.n} 次：${pct(R.bias)}</b>（±${(R.ci95*100).toFixed(1)}%）。
+      偏差从大幅${R.earlyBias>0?'过冲':'欠冲'}收敛到接近 0，这就是适应过程留下的痕迹。`;
+  else if (R.verdict==='nodata')
+    biasLine = `仅 ${R.n} 次有效甩枪（至少需要 25 次），样本量不足以估计偏差。`;
+  else if (R.verdict==='keep')
+    biasLine = `平均落点偏差 <b>${pct(R.bias)}</b>，95% 置信区间 ±${(R.ci95*100).toFixed(1)}%，${
+        Math.abs(R.bias)<=R.ci95 ? '在统计噪声范围内' : '未达到建议改动的 5% 门槛'}。`;
+  else
+    biasLine = `你的首次停枪平均<b>${dirBias} ${(Math.abs(R.bias)*100).toFixed(1)}%</b>，95% 置信区间 ±${(R.ci95*100).toFixed(1)}%（基于 ${R.n} 次有效甩枪）。`;
+
+  // ± 的含义只解释一次，放在所有分支之后
+  if (R.verdict!=='nodata')
+    biasLine += ` <span style="color:var(--dim2)">（±号表示真值有 95% 概率落在这个范围内，范围越窄越可信）</span>`;
+
+  const bars = R.byDir.map(d=>{
+    if (d.bias===null) return `<div class="brow"><span class="nm">${d.k}</span><div class="btrack"></div><span class="vl" style="color:var(--dim2)">样本不足</span></div>`;
+    const w = clamp(Math.abs(d.bias)/0.35,0,1)*50;
+    const c = Math.abs(d.bias)<0.05 ? 'var(--ok)' : Math.abs(d.bias)<0.15 ? 'var(--warn)' : 'var(--bad)';
+    const style = d.bias>=0 ? `left:50%;width:${w}%` : `right:50%;width:${w}%`;
+    return `<div class="brow"><span class="nm">${d.k}</span><div class="btrack"><div class="bfill" style="${style};background:${c}"></div></div><span class="vl">${pct(d.bias)}</span></div>`;
+  }).join('');
+
+  const warns = [];
+  if (R.verdict==='adapting' && R.habitSens)
+    warns.push(`<div class="note w"><b>开头手速 ${R.paceEarly.toFixed(0)} cm/360，设置 ${R.cmNow.toFixed(0)} cm/360，差 ${(Math.max(R.paceEarly,R.cmNow)/Math.min(R.paceEarly,R.cmNow)).toFixed(2)} 倍。</b>
+      <span style="color:var(--dim2)">这是下限，真实差距更大。</span></div>`);
+  if (R.lockMode==='adjusted')
+    warns.push(`<div class="note e"><b>结果可信度低：</b>你的浏览器不支持原始鼠标输入（unadjustedMovement），采集到的位移经过了系统指针加速处理。建议改用 Chrome 或 Edge 重测。</div>`);
+  else if (R.lockMode==='unknown')
+    warns.push(`<div class="note w"><b>提示：</b>无法确认浏览器是否绕过了系统指针加速。若你在 Windows 里开着"增强指针精确度"，结果可能偏差。</div>`);
+  if (R.hz && R.hz < cfg.poll*0.6)
+    warns.push(`<div class="note w"><b>回报率异常：</b>你设置的是 ${cfg.poll} Hz，但浏览器实测只有约 <b>${R.hz} Hz</b>。可能是 USB 口、驱动或省电设置的问题，值得排查一下。</div>`);
+  if (cfg.sim)
+    warns.push(`<div class="note"><b>本次开启了 ${cfg.sim} Hz 降采样模拟</b>，属于体感对比模式，结论仅供参考。</div>`);
+  if (R.n >= 25 && R.n < 40)
+    warns.push(`<div class="note w"><b>有效样本偏少（${R.n} 次）：</b>可能是甩枪速度太慢导致弹道阶段无法识别。结论的不确定性比正常情况大。</div>`);
+
+  el.innerHTML = `
+  <div class="hd"><h1>测试结果</h1><span class="tag">${new Date(R.ts).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</span></div>
+
+  <div class="verdict ${R.verdict}">
+    <div class="lbl">${V.lbl}</div>
+    <h2>${V.h}</h2>
+    <p>${V.p}</p>
+    <div class="sensbox">
+      <div class="sensbig">${shownSens.toFixed(2)}</div>
+      ${useNew ? `<div><div class="sensold">${cfg.sens.toFixed(2)}</div>
+        <div style="font-size:12px;color:var(--dim)">${R.cmNow.toFixed(1)} → ${R.cmNew.toFixed(1)} cm/360</div></div>`
+        : `<div style="font-size:12.5px;color:var(--dim)">${R.verdict==='nodata'?'当前值，未作调整':'维持当前值'}<br>${R.cmNow.toFixed(1)} cm/360</div>`}
+    </div>
+    <div class="cmd">
+      <code id="cmdTxt">sensitivity ${shownSens.toFixed(2)}</code>
+      <button class="cpy" id="btnCopy">复制</button>
+    </div>
+    ${R.verdict==='chg' ? `<div class="note w" style="margin-top:18px">
+      <b>分次过渡建议：</b>先用 <code style="font-family:var(--mono);color:var(--acc2)">sensitivity ${step1.toFixed(2)}</code> 打一周，
+      适应后再调到 ${R.newSens.toFixed(2)}。直接跳过去短期内会明显打不准。</div>` : ''}
+  </div>
+
+  ${warns.join('')}
+
+  ${R.paceN >= 8 ? (()=>{
+      const S=R.paceSeries, lo=Math.min(...S,R.cmNow)*0.92, hi=Math.max(...S,R.cmNow)*1.08;
+      const X=w=>((w-lo)/(hi-lo))*100;
+      const bars = S.map((v,i)=>`<div class="prow"><span class="pi">${i+1}</span>
+        <div class="ptrack"><div class="pdot" style="left:${clamp(X(v),0,100)}%"></div></div>
+        <span class="pv">${v.toFixed(0)}</span></div>`).join('');
+      return `<div class="card">
+    <h2>你的手实际在按什么节奏动</h2>
+    <p style="color:var(--dim);font-size:13.5px;margin:0 0 18px">
+      每次甩枪：所需角度 ÷ 手实际走的距离 = 你的手当次认为「转一圈该走多远」。不含拟合参数，可以和你的设置矛盾。</p>
+    <div class="adapt">
+      <div><div class="k">开头 5 次（中位数）<span style="display:block;font-weight:400;color:var(--dim2)">还没适应时，你的手按什么节奏在动</span></div>
+        <div class="v" style="color:var(--acc)">${R.paceEarly.toFixed(0)}<span style="font-size:13px;color:var(--dim)"> cm/360</span></div>
+        <div class="s">≈ sensitivity ${R.habitSens?R.habitSens.toFixed(2):'—'}</div></div>
+      <div><div class="k">你当前的设置<span style="display:block;font-weight:400;color:var(--dim2)">两者差得越远，说明越不是你习惯的</span></div>
+        <div class="v">${R.cmNow.toFixed(0)}<span style="font-size:13px;color:var(--dim)"> cm/360</span></div>
+        <div class="s">sensitivity ${cfg.sens.toFixed(2)} · 末段实测 ${R.paceLate.toFixed(0)}</div></div>
+    </div>
+    <div class="pchart">
+      <div class="paxis"><span>${lo.toFixed(0)}</span><span style="color:var(--acc2)">设置值 ${R.cmNow.toFixed(0)}</span><span>${hi.toFixed(0)} cm/360</span></div>
+      <div class="pmark" style="left:calc(30px + ${clamp(X(R.cmNow),0,100)}% * (100% - 74px) / 100)"></div>
+      ${bars}
+    </div>
+    <div class="note" style="margin-top:18px">
+      ${R.adapting
+        ? `<b>开头 ${R.paceEarly.toFixed(0)} cm/360，末段 ${R.paceLate.toFixed(0)} cm/360，向设置值 ${R.cmNow.toFixed(0)} 收敛。</b>
+           这是适应过程 —— 你的手在测试中被拉到了当前设置上。所以"主测偏差接近 0"<b>不能</b>说明这个灵敏度合适，
+           它只说明你适应了。开头那几次才是你原本的节奏。`
+        : `<b>开头 ${R.paceEarly.toFixed(0)}、末段 ${R.paceLate.toFixed(0)}，全程稳定在设置值 ${R.cmNow.toFixed(0)} 附近。</b>
+           没有适应痕迹，说明你从第一次甩枪就已经校准在这个灵敏度上。`}
+      <br><br><span style="color:var(--dim2)"><b>这个数只能判断"有没有错配"和"往哪个方向"，别当准确值。</b>
+      开头几次已含少量适应，它会被设置值拉走（合成检验只还原真实差距的 62–82%）。
+      要准确推荐值请用<b>灵敏度对比</b>或<b>新手扫描</b>模式。</span>
+    </div>
+  </div>`; })() : ''}
+
+  <div class="card">
+    <h2>甩枪偏差</h2>
+    <p style="color:var(--dim);font-size:13.5px;margin:0 0 18px">${biasLine}</p>
+    <div class="bars">${bars}</div>
+    <div class="axis"><span>← 欠冲 35%</span><span>0</span><span>过冲 35% →</span></div>
+    <div class="note" style="margin-top:20px">
+      ${Math.abs(R.slope) > 0.004
+        ? `角度每增加 10°，偏差变化 ${(R.slope*10*100).toFixed(1)}%${R.slope>0?'（大角度更易过冲，通常是灵敏度偏高）':'（大角度更易欠冲，通常是灵敏度偏低）'}。`
+        : `大小角度偏差一致，无角度依赖。`}
+      ${(()=>{const l=R.byDir.find(d=>d.k==='左'), r=R.byDir.find(d=>d.k==='右');
+        return (l&&r&&l.bias!==null&&r.bias!==null&&Math.abs(l.bias-r.bias)>0.10)
+          ? `<br>左右偏差相差 ${(Math.abs(l.bias-r.bias)*100).toFixed(0)}%，多与坐姿/握法有关，调灵敏度解决不了。` : '';})()}
+    </div>
+  </div>
+
+  ${(R.track||R.hold||R.corr2||R.spray) ? `<div class="card">
+    <h2>其他维度</h2>
+    <table class="dt">
+      ${R.track ? `<tr><td>跟枪在靶时间 <span class="sm">快速移动靶上准星压住的时间占比，${R.track.n} 段</span></td><td>${(R.track.onTarget*100).toFixed(0)}%</td></tr>
+      <tr><td>跟枪平均角距离 <span class="sm">准星离靶心多远，越小越贴</span></td><td>${R.track.meanErr.toFixed(2)}°</td></tr>` : ''}
+      ${R.hold ? `<tr><td>微控在靶时间 <span class="sm">靶会慢慢漂走，松手 0.2 秒就脱靶，${R.hold.n} 段</span></td><td>${(R.hold.onTarget*100).toFixed(0)}%</td></tr>
+      <tr><td>微控偏离 <span class="sm">偏离靶心的平均角度。灵敏度越高这项必然越差</span></td><td>${R.hold.rms.toFixed(3)}°</td></tr>` : ''}
+      ${R.wave ? `<tr><td>每度耗时 <span class="sm">清屏时间÷实际走的角度，除掉了"先打哪个"的影响</span></td><td>${R.wave.msPerDeg.toFixed(1)} ms/°</td></tr>
+      <tr><td>波次吞吐量 <span class="sm">另一种归一化${R.wave.fit?` · 本次 ${R.wave.fit.better==='msPerDeg'?'每度耗时':'吞吐量'}拟合更好`:''}</span></td><td>${R.wave.tp.toFixed(2)} bit/s</td></tr>
+      <tr><td>波次清屏时间 <span class="sm">打光一波用多久，受打靶顺序影响。平均 ${R.wave.targets.toFixed(1)} 个靶${R.wave.dropped?` · ${R.wave.dropped} 波超时未计`:''}</span></td><td>${(R.wave.clearMs/1000).toFixed(2)} s</td></tr>
+      <tr><td>波次命中率 <span class="sm">命中数÷开枪数，平均 ${R.wave.shots.toFixed(1)} 枪/波</span></td><td>${(R.wave.acc*100).toFixed(0)}%</td></tr>` : ''}
+      ${R.spray ? `<tr><td>压枪 RMS 偏离 <span class="sm">整梭子期间准星离靶心的均方根，越小越稳，${R.spray.n} 段</span></td><td>${R.spray.rms.toFixed(2)}°</td></tr>
+      <tr><td>压枪纵向 / 横向 <span class="sm">纵向大＝持续下拉执行不好；横向大＝看着补的闭环跟不上</span></td><td>${R.spray.rmsV.toFixed(2)}° / ${R.spray.rmsH.toFixed(2)}°</td></tr>
+      <tr><td>压枪命中率 <span class="sm">整梭子里有多少发开枪瞬间准星在靶上</span></td><td>${(R.spray.hitRate*100).toFixed(0)}%</td></tr>` : ''}
+      ${R.corr2 ? `<tr><td>修正阶段微调次数 <span class="sm">必须命中才过，所以这个数才有信息。越多说明越停不准</span></td><td>${R.corr2.corr.toFixed(2)}</td></tr>
+      <tr><td>平均命中所需枪数 <span class="sm">1.0 = 每次一枪入魂</span></td><td>${R.corr2.shots.toFixed(2)}</td></tr>` : ''}
+    </table>
+    ${(()=>{
+      const notes = [];
+      // 修正次数是唯一有明确方向性含义的：停枪之后反复来回拉 = 停不准 = 灵敏度偏高的典型特征。
+      // 微控和跟枪的绝对值缺少参照系，只在对比模式里比较才有意义，这里不做单侧推断。
+      if (R.spray && R.spray.rmsV > R.spray.rmsH*1.6) notes.push(`<b>压枪的偏差主要在纵向（${R.spray.rmsV.toFixed(2)}° vs 横向 ${R.spray.rmsH.toFixed(2)}°）。</b>
+        持续下拉这个动作没执行好。灵敏度太低时下拉行程太长、手到中途就走不动了；太高时一点点抖动就放大成大偏差。
+        这一项<b>不进记分卡</b>，只作参考 —— 它同时受枪法习惯影响，单独一次测不出方向。`);
+      else if (R.spray && R.spray.rmsH > R.spray.rmsV*1.6) notes.push(`压枪的偏差主要在横向（${R.spray.rmsH.toFixed(2)}° vs 纵向 ${R.spray.rmsV.toFixed(2)}°）。
+        纵向的持续下拉是稳的，跟不上的是随机横向摆动 —— 这是闭环修正速度的问题，和甩枪后的微调次数一起看更有意义。`);
+      if (R.corr2 && R.corr2.corr > 1.5) notes.push(`<b>修正次数偏多（${R.corr2.corr.toFixed(1)} 次）。</b>
+        停枪之后需要反复来回拉才能压上去，这是灵敏度偏高的典型特征。即使甩枪偏差在范围内，也可以考虑往下调一点点。`);
+      else if (R.corr2 && R.corr2.corr < 0.5) notes.push(`修正次数很少（${R.corr2.corr.toFixed(1)} 次），停枪基本一步到位，这项没有问题。`);
+      return notes.length ? `<div class="note" style="margin-top:16px">${notes.join('<br><br>')}</div>` : '';
+    })()}
+    <div class="note" style="margin-top:16px">
+      <span style="color:var(--dim2)">跟枪和微控的绝对值没有通用参照系，只在<b>灵敏度对比模式</b>里比较才有意义。</span>
+    </div>
+  </div>` : ''}
+
+  <div class="card">
+    <h2>详细数据</h2>
+    <table class="dt">
+      <tr><td>有效甩枪试次 <span class="sm">被判定为真甩枪的次数，慢慢挪过去的不算</span></td><td>${R.n}</td></tr>
+      <tr><td>命中率</td><td>${(R.hitRate*100).toFixed(0)}%</td></tr>
+      <tr><td>首次停枪耗时 <span class="sm">甩枪减速停住那一刻，不含之后的微调</span></td><td>${Math.round(R.stopMs)} ms</td></tr>
+      <tr><td>总击杀耗时 <span class="sm">出靶到打中，包含所有微调</span></td><td>${Math.round(R.totalMs)} ms</td></tr>
+      <tr><td>甩枪阶段微调次数 <span class="sm">停枪后来回拉几次。打不中也过，所以参考价值低</span></td><td>${R.corr.toFixed(2)}</td></tr>
+      <tr><td>落点一致性 <span class="sm">衡量稳不稳，不是准不准。每次都稳定甩过头也算稳</span></td><td>${(R.sd*100).toFixed(1)}%</td></tr>
+      <tr><td>180° 转身耗时 <span class="sm">${R.turnN} 次。主要看行程够不够、要抬几次鼠标</span></td><td>${R.turnN?Math.round(R.turnMs)+' ms':'—'}</td></tr>
+      <tr><td>实测回报率 <span class="sm">设置值 ${cfg.poll} Hz${R.tsRes>=1?' · 浏览器精度只有 1ms，≥1000Hz 一律显示 1000，不可信':''}</span></td><td>${R.hz||'—'} Hz</td></tr>
+      ${R.perf ? `<tr><td>渲染帧率 <span class="sm">画面每秒刷新次数，帧间隔中位数 ${R.perf.frameMed} ms</span></td><td>${R.perf.fps} fps</td></tr>
+      <tr><td>帧间隔 P95 / 最大 <span class="sm">95% 的帧比这快。和中位数差越远越卡，掉帧 ${R.perf.jankPct}%</span></td><td>${R.perf.frameP95} / ${R.perf.frameMax} ms</td></tr>
+      <tr><td>输入滞留 <span class="sm">手动了到画面动隔了多久。这是"不跟手"的直接量化</span></td><td>${R.perf.inputMed} / ${R.perf.inputP95} ms</td></tr>` : ''}
+    </table>
+    ${R.corr < 0.2 ? `<div class="note" style="margin-top:16px">
+      停枪到点击仅 ${Math.round(R.totalMs-R.stopMs)}ms，来不及修正，此项无信息。</div>` : ''}
+  </div>
+
+  <div class="card">
+    <h2>换算参考</h2>
+    <table class="dt">
+      <tr><td>当前 cm/360 <span class="sm">转一整圈鼠标要走多远，跨游戏通用</span></td><td>${R.cmNow.toFixed(1)} cm</td></tr>
+      <tr><td>推荐 cm/360</td><td>${shownCm.toFixed(1)} cm</td></tr>
+      <tr><td>eDPI <span class="sm">DPI×灵敏度，同一游戏内比较用</span></td><td>${Math.round(cfg.dpi*shownSens)}</td></tr>
+      <tr><td>180° 转身行程 <span class="sm">转半圈的鼠标横向距离</span></td><td>${(shownCm/2).toFixed(1)} cm</td></tr>
+      <tr><td>画面比例</td><td>${({1.33333:'4:3',1.6:'16:10',1.77778:'16:9'})[cfg.aspect]||cfg.aspect}${cfg.stretch?' 拉伸':''}</td></tr>
+    </table>
+    <div class="note" style="margin-top:16px">
+      <b>换完记得验一下：</b>在鼠标垫上做个标记，进游戏贴墙转 360°，实际移动距离应该约
+      <b>${shownCm.toFixed(1)} cm</b>。对不上说明 DPI 填错了。
+    </div>
+  </div>
+
+  <div class="row">
+    <button class="btn" id="btnAgain">再测一次</button>
+    <button class="btn gh" id="btnBack">返回设置</button>
+    <button class="btn gh" id="btnExport">导出 JSON</button>
+  </div>
+  <p style="color:var(--dim2);font-size:12px;margin-top:22px">
+    本测试衡量的是<b style="color:var(--dim)">与你肌肉记忆的匹配度</b>，不等于性能最优。浏览器链路比原生游戏长，绝对耗时偏高，但同次测试内部的比较成立。</p>`;
+
+  $('btnCopy').onclick = ()=>{
+    navigator.clipboard.writeText($('cmdTxt').textContent).then(()=>{
+      $('btnCopy').textContent='已复制'; setTimeout(()=>$('btnCopy').textContent='复制',1400);
+    }).catch(()=>{});
+  };
+  $('btnAgain').onclick = ()=>{ el.classList.add('hidden'); beginTest(); };
+  $('btnBack').onclick  = ()=>{ el.classList.add('hidden'); $('screenSetup').classList.remove('hidden'); renderHistory(); window.scrollTo(0,0); };
+  $('btnExport').onclick = ()=>{
+    const b = new Blob([JSON.stringify(R,null,2)],{type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = `${(R.cfg&&R.cfg.game&&GAMES[R.cfg.game]?GAMES[R.cfg.game]:G).filePrefix}-${(R.cfg&&R.cfg.who?R.cfg.who.replace(/[^\w一-龥-]/g,'')+'-':'')}${new Date(R.ts).toISOString().slice(0,16).replace(/[:T]/g,'')}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+  window.scrollTo(0,0);
+}
+
+/* ═══════════ 启动流程 ═══════════ */
+let LOCK_MODE = 'unknown';
+
+async function beginTest(){
+  readCfg();
+  try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){}
+  $('screenSetup').classList.add('hidden');
+  $('screenTest').classList.remove('hidden');
+  $('trans').classList.add('hidden');
+  Scene.resize();
+
+  $('overlay').classList.remove('hidden');
+  $('ovTitle').textContent = '准备好了吗';
+  $('ovBody').innerHTML = `点击下方按钮锁定鼠标并开始。<br>目标出现后尽快甩过去点击，用平时打${G.short}的姿势。<br>随时按 <span class="kb">Esc</span> 暂停。`;
+  $('ovBtn').textContent = '锁定鼠标，开始';
+  $('ovBtn').onclick = async ()=>{
+    LOCK_MODE = await requestLock($('cv'));
+    if (LOCK_MODE==='failed'){
+      $('ovTitle').textContent = '鼠标锁定失败';
+      $('ovBody').innerHTML =
+        (LOCK_ERR ? `<span style="color:var(--bad);font-family:var(--mono);font-size:12.5px">${LOCK_ERR}</span><br><br>` : '')
+        + lockHint();
+      $('ovBtn').textContent = '重试';
+      return;
+    }
+    $('overlay').classList.add('hidden');
+    Test.start();
+  };
+}
+
+document.addEventListener('pointerlockchange', ()=>{
+  if (!document.pointerLockElement && Test.running && !Test.paused) Test.pause();
+});
+
+(function init(){
+  Scene.init(); Input.bind();
+  // 自动探测显示器比例，贴近哪个预设就选哪个（用户可改）
+  try{
+    const da = screen.width/screen.height;
+    const opts = [1.33333,1.6,1.77778,2.37037];
+    cfg.display = opts.reduce((b,v)=>Math.abs(v-da)<Math.abs(b-da)?v:b, 1.77778);
+    $('iDisplay').value = cfg.display;
+  }catch(e){}
+  try{
+    const s = localStorage.getItem(CFG_KEY);
+    if (s) { cfg = Object.assign(cfg, JSON.parse(s)); writeCfg(cfg); }
+  }catch(e){}
+  // 两个游戏的准星字段全挂上；当前隐藏的那一组不会触发，挂着也无害
+  ['iDpi','iSens','iPoll','iAspect','iStretch','iDisplay','iTgt','iSim','iResY','iSensA','iSensB',
+   'iGrip','iCandMode','oCand', 'xCol','xDot',
+   'xSize','xThick','xGap','xOut','xAlpha','xT',
+   'xInL','xInT','xInO','xInA','xOutB','xOutL','xOutT','xOutO','xOutA','xStroke','xDotT']
+    .forEach(id => { const el = $(id); if (el) el.addEventListener('input', refreshReadout); });
+  document.querySelectorAll('input[name=mode]').forEach(r=>r.addEventListener('change', refreshReadout));
+  document.querySelectorAll('input[name=game]').forEach(r=>r.addEventListener('change', ()=>setGame(r.value)));
+  $('btnConv').onclick = ()=>{
+    readCfg();
+    const from = G.id==='cs2' ? 'val' : 'cs2';
+    const src = cfg.perGame[from].sens;
+    const v = convertSens(from, G.id, src);
+    const dec = G.id==='cs2' ? 3 : 4;
+    $('iSens').value = +v.toFixed(dec);
+    $('iSensA').value = +v.toFixed(dec);
+    refreshReadout();
+    $('convHint').textContent =
+      `${GAMES[from].name} ${src} → ${GAMES[G.id].name} ${(+v.toFixed(dec))}，两边都是 ${cm360(cfg.dpi, v).toFixed(1)} cm/360`;
+  };
+  // 匹配度模式下改灵敏度时，同步作为对比模式的 A 值
+  $('iSens').addEventListener('input', ()=>{
+    if (cfg.mode!=='ab'){ $('iSensA').value = $('iSens').value; refreshReadout(); }
+  });
+  refreshReadout();
+
+  // 环境预检：iframe 会直接锁不上鼠标，优先级最高
+  const ua = navigator.userAgent;
+  const chromium = /Chrome|Chromium|Edg/.test(ua) && !/OPR/.test(ua);
+  if (window.self !== window.top){
+    $('compatWarn').classList.remove('hidden');
+    $('compatWarn').innerHTML = `<b>鼠标锁定在当前环境下不可用。</b><br>${EMBED_MSG}`;
+  } else if (!chromium){
+    $('compatWarn').classList.remove('hidden');
+    $('compatWarn').innerHTML = `<b>你的浏览器可能不支持原始鼠标输入。</b>
+      Firefox 和 Safari 拿不到未经系统指针加速处理的位移数据，测出来的落点偏差会失真。
+      强烈建议改用 <b>Chrome</b> 或 <b>Edge</b>。你仍然可以继续，但结果只能当参考。`;
+  }
+
+  // 没有保存过配置 = 第一次打开，提醒把默认值改成自己的
+  try{ if (!localStorage.getItem(CFG_KEY)) $('firstRun').classList.remove('hidden'); }catch(e){}
+  // 上次的崩溃/报错（如果有）
+  try{
+    const le = JSON.parse(localStorage.getItem(ERR_KEY)||'null');
+    if (le){
+      $('lastErr').classList.remove('hidden');
+      $('lastErr').innerHTML = `<b>上次使用时出现了错误</b>（${new Date(le.when).toLocaleString('zh-CN')}）<br>
+        <span style="font-family:var(--mono);font-size:12px">${le.kind}: ${le.msg}</span><br>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--dim2)">${(le.extra||'').slice(0,120)}<br>
+        内存 ${le.mem||'—'} · 屏幕 ${le.screen} · dpr ${le.dpr}</span><br>
+        <button class="cpy" id="btnErrCopy" style="margin-top:8px">复制错误详情</button>
+        <button class="cpy" id="btnErrClear" style="margin-top:8px">忽略</button>`;
+      $('btnErrCopy').onclick = ()=>navigator.clipboard.writeText(JSON.stringify(le,null,2))
+        .then(()=>$('btnErrCopy').textContent='已复制').catch(()=>{});
+      $('btnErrClear').onclick = ()=>{ try{localStorage.removeItem(ERR_KEY);}catch(e){}
+        $('lastErr').classList.add('hidden'); };
+    }
+  }catch(e){}
+  renderHistory();      // 测试记录取代了原来的"查看上次结果"按钮
+  $('btnHistClear').onclick = ()=>{
+    if (!confirm('确定清空全部测试记录？此操作不可撤销。')) return;
+    try{ localStorage.removeItem(HIST_KEY); localStorage.removeItem(RES_KEY); }catch(e){}
+    renderHistory();
+  };
+
+  // ── 准星代码 导入 / 导出 ──
+  const doImport = ()=>{
+    const v = $('xhCode').value.trim();
+    if (!v){ xhMsg('先粘贴一个准星代码', false); return; }
+    try{
+      const f = xhDecode(v);
+      xhToUI(f);
+      // 这些是动态/误差相关的项，靶场里没有射击误差和移动误差，画不出来，但原样留在代码里
+      const sk = G.xh.skipped(f);
+      xhMsg('✓ 导入成功' + (sk.length ? `（${sk.join('、')}已保留但不参与渲染）` : ''), true);
+    }catch(e){ xhMsg('✗ '+e.message, false); }
+  };
+  $('btnXhImport').onclick = doImport;
+  $('xhCode').addEventListener('keydown', e=>{ if(e.key==='Enter') doImport(); });
+
+  const copy = (text, btn, label)=>{
+    navigator.clipboard.writeText(text).then(()=>{
+      const old = btn.textContent; btn.textContent = '已复制';
+      setTimeout(()=>btn.textContent = old, 1400);
+      xhMsg(label, true);
+    }).catch(()=>xhMsg('✗ 复制失败，浏览器拒绝了剪贴板权限', false));
+  };
+  $('btnXhCode').onclick = ()=>{
+    readCfg();
+    try{
+      const code = xhEncode(xhFromUI());
+      $('xhCode').value = code;
+      copy(code, $('btnXhCode'), G.xh.copyHint);
+    }catch(e){ xhMsg('✗ 生成失败：'+e.message, false); }
+  };
+  $('btnXhCvar').onclick = ()=>{        // CS2 专用，无畏契约没有控制台，按钮是隐藏的
+    readCfg();
+    if (!G.xh.conVars) return;
+    copy(G.xh.conVars(xhFromUI()), $('btnXhCvar'), '控制台命令已复制，粘进 CS2 控制台即可');
+  };
+
+  $('btnStart').onclick = beginTest;
+  setGame(cfg.game || 'cs2', {force:true});   // 必须在读完存档之后，负责铺开界面和标签
+  probeLock();
+})();
+</script>
+</body>
+</html>
