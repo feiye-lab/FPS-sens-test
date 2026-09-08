@@ -77,6 +77,20 @@ input[type=number]:focus,select:focus{outline:none;border-color:var(--acc)}
 .ro .v small{font-size:12px;color:var(--dim);font-weight:400;margin-left:2px}
 .ro .v.hl{color:var(--acc)}
 
+/* 可驾驭区间的分布条 */
+.bandwrap{margin:6px 0 18px}
+.bandbar{position:relative;height:42px;background:var(--panel2);border:1px solid var(--line);border-radius:8px}
+.bandbar i{position:absolute;top:0;bottom:0;display:block}
+.bandbar .b90{background:var(--accsoft);border-left:1px solid var(--line);border-right:1px solid var(--line)}
+.bandbar .b50{background:color-mix(in srgb,var(--acc) 22%,transparent);border-radius:4px}
+.bandbar .bmid{width:2px;background:var(--acc)}
+.bandbar .bnow{width:2px;background:var(--fg)}
+.bandbar .bnow::after{content:"现在";position:absolute;top:-19px;left:50%;transform:translateX(-50%);
+  font-size:10.5px;color:var(--fg);font-family:var(--mono);white-space:nowrap}
+.bandbar .bmid::after{content:"中位";position:absolute;bottom:-19px;left:50%;transform:translateX(-50%);
+  font-size:10.5px;color:var(--acc);font-family:var(--mono);white-space:nowrap}
+.bandax{display:flex;justify-content:space-between;margin-top:24px;font-size:11.5px;
+  color:var(--dim2);font-family:var(--mono)}
 .note{background:var(--panel2);border-left:3px solid var(--blue);border-radius:0 6px 6px 0;padding:12px 15px;font-size:13px;color:var(--dim);margin-top:16px}
 .note b{color:var(--fg);font-weight:600}
 .note.w{border-left-color:var(--warn)}
@@ -612,6 +626,14 @@ function saveHistory(R){
 function loadHistory(){
   try{ return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); }catch(e){ return []; }
 }
+/** 建议灵敏度的区间文案。测不出点值就别写点值。 */
+function sensRangeText(R){
+  const dec = (R.cfg && R.cfg.game==='val') ? 3 : 2;
+  const lo = R.sensLo, hi = R.sensHi;
+  if (!(lo>0 && hi>0)) return (R.newSens||0).toFixed(dec);
+  const a = lo.toFixed(dec), b = hi.toFixed(dec);
+  return a === b ? a : `${a}–${b}`;
+}
 /** 一条记录 → 可读摘要（模式 / 配置 / 结论 / 关键数字） */
 function histSummary(R){
   if (R.mode==='ab'){
@@ -626,8 +648,10 @@ function histSummary(R){
     return {mode:'新手扫描', tone:'ok', verdict:rec,
       detail:`候选 ${R.cands.map(c=>c.sens).join(' / ')} · ${({arm:'手臂流',hybrid:'混合流',wrist:'手腕流'})[R.cfg.grip]||''}`};
   }
-  const v = {keep:{t:'保持不变',c:'ok'}, tune:{t:`微调到 ${(R.newSens||0).toFixed(2)}`,c:'warn'},
-             chg:{t:`调整到 ${(R.newSens||0).toFixed(2)}`,c:'bad'},
+  // 建议一律给区间：给一个两位小数的点值是假精确，我们没那个精度
+  const rng = sensRangeText(R);
+  const v = {keep:{t:'保持不变',c:'ok'}, tune:{t:`微调到 ${rng}`,c:'warn'},
+             chg:{t:`调整到 ${rng}`,c:'bad'},
              adapting:{t:'不是你习惯的灵敏度',c:'bad'}, nodata:{t:'数据不足',c:'dim'}}[R.verdict]
              || {t:R.verdict,c:'dim'};
   let d = `sens ${R.cfg.sens} · ${(R.cmNow||0).toFixed(0)} cm/360 · ${R.n||0} 次有效甩枪`;
@@ -2557,6 +2581,25 @@ function buildReport(all){
 
   const newSens = cfg.sens/(1+bias);
 
+  /* ── 两种「区间」，含义完全不同，混起来就是骗人 ──
+     1. 建议区间 sensLo/sensHi：把偏差的 95% 置信区间传播过去。
+        它说的是「**我们**测不准，最合适的值大概落在这儿」。
+        多测几次它会变窄 —— 它描述的是测量精度，不是你的能力。
+     2. 可驾驭区间 band：你自己逐次甩枪反推出的节奏分布。
+        它说的是「比这个跨度更小的灵敏度差异，**你自己**分辨不出来」。
+        多测几次它**不会**变窄 —— 它描述的是你，不是测量。
+     用分位数而不是 ±k×sd：不必假设正态，也免得我去挑一个 k（那就是拟合）。
+     这个散布里同时含手的抖动和停枪判定的测量噪声，两者拆不开，
+     所以 band 是**外沿**不是保证 —— 界面上照这个口径写。 */
+  const denomLo = 1 + bias + ci95, denomHi = 1 + bias - ci95;
+  const sensLo = denomLo > 0.05 ? cfg.sens/denomLo : null;
+  const sensHi = denomHi > 0.05 ? cfg.sens/denomHi : null;
+  const mainPace = main.map(r => r.ratio * cmNow);
+  const band = mainPace.length >= 20 ? {
+    p10:pctl(mainPace,0.10), p25:pctl(mainPace,0.25), p50:pctl(mainPace,0.50),
+    p75:pctl(mainPace,0.75), p90:pctl(mainPace,0.90), n:mainPace.length
+  } : null;
+
   const byDir = SECTORS.map(s=>{
     const g = main.filter(r=>sectorOf(r.phi*R2D)===s.k);
     return {k:s.k, n:g.length, bias: g.length>=10 ? trimmed(g.map(r=>r.ratio)).mean-1 : null};
@@ -2567,7 +2610,7 @@ function buildReport(all){
     cfg:{...cfg}, verdict, bias, ci95, n:st.n, sd:st.sd,
     earlyBias, earlyCi, earlyN:eSt.n, adapting, habitSens,
     paceEarly, paceLate, paceSeries: pace.slice(0,40).map(v=>+v.toFixed(1)), paceN: pace.length,
-    newSens, cmNow, cmNew: cmNow*(1+bias),
+    newSens, sensLo, sensHi, band, cmNow, cmNew: cmNow*(1+bias),
     hitRate: main.length ? main.filter(r=>r.hit).length/main.length : 0,
     stopMs: main.length ? main.reduce((a,r)=>a+r.stopMs,0)/main.length : 0,
     totalMs: main.length ? main.reduce((a,r)=>a+r.totalMs,0)/main.length : 0,
@@ -2699,9 +2742,13 @@ function showABResults(R){
   let head, body;
   if (!w && !R.split){
     const mdd = R.A.err ? R.errT.ci/R.A.err*100 : 0;
+    const cLo = Math.min(R.cmA, R.cmB), cHi = Math.max(R.cmA, R.cmB);
     head = '两个灵敏度没有显著差异';
     body = `四个维度（甩枪、跟枪、微控、修正）<b>没有一项</b>达到统计显著。
-            <br><br>这说明<b>换灵敏度不会带来立竿见影的提升</b>。如果你在瓶颈期，问题多半不在灵敏度上，
+            <br><br>换个说法：<b>${cLo.toFixed(0)}–${cHi.toFixed(0)} cm/360 这一整段你都能驾驭</b>，
+            区间内挑哪个都行，凭手感选就好 —— 这才是这次测试给出的结论，
+            它本来就不是一个点值。
+            <br><br>这也说明<b>换灵敏度不会带来立竿见影的提升</b>。如果你在瓶颈期，问题多半不在灵敏度上，
             调整握法、坐姿、鼠标垫空间或者预瞄习惯可能更有用。
             <br><br><span style="color:var(--dim2)">注意样本量的限制：甩枪这项能可靠检出的最小差异约为 <b>${mdd.toFixed(0)}%</b>，
             比这更小的差距测不出来。"没差异"意味着"差距不大到值得为它折腾"，不是"绝对相同"。</span>`;
@@ -2940,6 +2987,7 @@ function showResults(R){
   const adapt = R.verdict==='adapting' && R.habitSens;
   const useNew = (R.verdict==='tune' || R.verdict==='chg') || adapt;
   const shownSens = adapt ? R.habitSens : (useNew ? R.newSens : cfg.sens);
+  const rangeTxt  = sensRangeText(R);
   const shownCm   = cm360(cfg.dpi, shownSens);
   const dirBias = R.bias > 0 ? '过冲（甩过头）' : '欠冲（甩不到位）';
   const step1 = cfg.sens + (R.newSens-cfg.sens)*0.5;
@@ -3041,6 +3089,54 @@ function showResults(R){
       <br><br><span style="color:var(--dim2)"><b>这个数只能判断"有没有错配"和"往哪个方向"，别当准确值。</b>
       开头几次已含少量适应，它会被设置值拉走（合成检验只还原真实差距的 62–82%）。
       要准确推荐值请用<b>灵敏度对比</b>或<b>新手扫描</b>模式。</span>
+    </div>
+  </div>`; })() : ''}
+
+  ${R.band ? (()=>{
+    const B = R.band, dec = cfg.game==='val' ? 3 : 2;
+    // 坐标轴要把当前设置也框进去，否则"现在"那根线会跑到条外面
+    const lo = Math.min(B.p10, R.cmNow), hi = Math.max(B.p90, R.cmNow);
+    const pad = Math.max((hi-lo)*0.18, 1);
+    const A0 = lo-pad, A1 = hi+pad, span = A1-A0;
+    const X = v => ((v-A0)/span*100).toFixed(2)+'%';
+    const Wd = (a,b) => ((b-a)/span*100).toFixed(2)+'%';
+    const sAt = cm => sensFromCm(cfg.dpi, cm).toFixed(dec);
+    // cm 越大灵敏度越低，所以灵敏度区间的端点要反过来取
+    const sHi = sAt(B.p25), sLo = sAt(B.p75);
+    return `<div class="card">
+    <h2>你能驾驭的区间</h2>
+    <div class="bandwrap">
+      <div class="bandbar">
+        <i class="b90" style="left:${X(B.p10)};width:${Wd(B.p10,B.p90)}"></i>
+        <i class="b50" style="left:${X(B.p25)};width:${Wd(B.p25,B.p75)}"></i>
+        <i class="bmid" style="left:${X(B.p50)}"></i>
+        <i class="bnow" style="left:${X(R.cmNow)}"></i>
+      </div>
+      <div class="bandax"><span>${A0.toFixed(0)} cm/360</span><span>${A1.toFixed(0)} cm/360</span></div>
+    </div>
+    <table class="dt">
+      <tr><td>一半的甩枪落在 <span class="sm">中间 50%，深色那段</span></td>
+          <td>${B.p25.toFixed(0)}–${B.p75.toFixed(0)} cm/360</td></tr>
+      <tr><td>八成的甩枪落在 <span class="sm">中间 80%，浅色那段</span></td>
+          <td>${B.p10.toFixed(0)}–${B.p90.toFixed(0)} cm/360</td></tr>
+      <tr><td>换算成游戏内灵敏度 <span class="sm">对应上面那半段</span></td>
+          <td>${sLo}–${sHi}</td></tr>
+      <tr><td>你当前设置 <span class="sm">白线的位置</span></td>
+          <td>${R.cmNow.toFixed(0)} cm/360</td></tr>
+    </table>
+    <div class="note" style="margin-top:18px">
+      <b>比 ${B.p25.toFixed(0)}–${B.p75.toFixed(0)} 这个跨度更小的灵敏度差异，你自己分辨不出来</b>
+      —— 它已经被你自己的甩枪散布盖住了。所以「最合适的灵敏度」本来就不是一个点，
+      在这段区间里挑哪个，取决于你更看重甩枪还是微控，而不取决于这次测试。
+    </div>
+    <div class="note" style="margin-top:12px">
+      <span style="color:var(--dim2)">
+      <b>这和上面的「建议区间」不是一回事。</b>那个是<b>测量精度</b>——我们只测了 ${R.n} 次，
+      最合适的值大概落在那儿，多测几次它会变窄。这个是<b>你本人的散布</b>，
+      多测几次也不会变窄，因为它描述的是你不是测量。<br><br>
+      口径要说清楚：这段散布里同时含手的抖动和停枪判定的测量误差，两者拆不开，
+      所以它是<b>外沿</b>而不是保证。要真正确认某个区间内表现确实无差别，
+      得用<b>灵敏度对比 A/B</b> 或<b>新手扫描</b>去实测——那两个模式比的是不同灵敏度下的实际表现。</span>
     </div>
   </div>`; })() : ''}
 
@@ -3192,6 +3288,8 @@ function cardContent(R){
     add('有效甩枪', (R.n||0) + ' 次');
     add('命中率', ((R.hitRate||0)*100).toFixed(0) + '%');
     add('甩枪偏差', `${pct(R.bias||0)} ± ${((R.ci95||0)*100).toFixed(1)}%`);
+    if (R.band) add('可驾驭区间', `${R.band.p25.toFixed(0)}–${R.band.p75.toFixed(0)} cm/360`);
+    if (R.verdict==='tune' || R.verdict==='chg') add('建议灵敏度', sensRangeText(R));
     if (R.paceEarly) add('开头手速', R.paceEarly.toFixed(0) + ' cm/360');
     rows.push(null);
     if (R.track) add('跟枪在靶', (R.track.onTarget*100).toFixed(0) + '%');
