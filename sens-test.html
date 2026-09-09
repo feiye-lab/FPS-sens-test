@@ -262,6 +262,15 @@ table.dt td .sm{font-size:11.5px;color:var(--dim2);font-weight:400;font-family:i
     <span class="tag">5 min</span>
   </div>
 
+  <div class="card hidden" id="resumeCard" style="border-color:var(--acc)">
+    <h2>上次没测完</h2>
+    <div id="resumeInfo" class="note" style="border-left-color:var(--acc);margin-top:0"></div>
+    <div class="row" style="gap:8px;margin-top:14px">
+      <button class="btn" id="btnResume">继续上次测试</button>
+      <button class="btn gh" id="btnDropResume">丢弃</button>
+    </div>
+  </div>
+
   <div class="card">
     <h2>游戏</h2>
     <div class="modes gsel">
@@ -519,6 +528,7 @@ table.dt td .sm{font-size:11.5px;color:var(--dim2);font-weight:400;font-family:i
       <h2 id="ovTitle">准备好了吗</h2>
       <p id="ovBody"></p>
       <button class="btn" id="ovBtn">点击开始</button>
+      <button class="btn gh hidden" id="ovBtn2">退出并保存进度</button>
     </div>
   </div>
 </div>
@@ -1806,6 +1816,121 @@ function analyzeTrial(tr){
   };
 }
 
+/* ═══════════ 断点续测 ═══════════
+   暂停之后可以退出，进度存在本地，下次打开接着测 —— 像视频软件记住播放位置。
+
+   要留神的两件事：
+   1. **配置必须整套存下来、整套还原。** 中途改了 DPI 或灵敏度再续测，
+      前后两半就不是同一个实验了。恢复时还会比对**阶段签名**（阶段 id 串），
+      对不上就拒绝续测 —— 与其悄悄把两份不同的数据拼起来，不如让人重测。
+   2. **中断本身是会影响数据的。** 这个测试依赖适应动力学：习惯匹配的信号
+      只在最开始那十几次里。隔一天再续，手的状态已经变了。
+      所以每次续测都记下间隔时长，结果页如实标出来，让读的人自己判断。
+
+   遥测数组（帧间隔、输入滞留、事件间隔）满载能到八万个数，
+   存进 localStorage 太浪费，只保留最后 3000 个 —— 中位数不受影响，
+   但续测后的性能统计只覆盖后半段，结果页会说明。 */
+const SESS_KEY = 'sensTest.session';
+const sessCap = (a,n) => (a && a.length>n) ? a.slice(-n) : (a||[]);
+
+function saveSession(){
+  if (!Test.running) return false;
+  try{
+    localStorage.setItem(SESS_KEY, JSON.stringify({
+      v:1, ts:Date.now(), cfg:{...cfg},
+      phase:Test.phase, phaseTrials:Test.phaseTrials,
+      sig:(Test.phases||[]).map(x=>x.id).join('|'),
+      nPhases:(Test.phases||[]).length,
+      results:Test.results, activeSens:Test.activeSens,
+      cands:SWEEP_CANDS, pausedEl:Test.pausedEl||0,
+      resumes:Test.resumes||[], lockMode:LOCK_MODE,
+      frameGaps:sessCap(Test.frameGaps,3000), inputAge:sessCap(Test.inputAge,3000),
+      inputGaps:sessCap(Input.gaps,3000), minGap:Input.minGap
+    }));
+    return true;
+  }catch(e){ return false; }
+}
+function loadSession(){
+  try{ const s = localStorage.getItem(SESS_KEY); return s ? JSON.parse(s) : null; }
+  catch(e){ return null; }
+}
+function clearSession(){ try{ localStorage.removeItem(SESS_KEY); }catch(e){} }
+
+function renderResume(){
+  const S = loadSession();
+  $('resumeCard').classList.toggle('hidden', !S);
+  if (!S) return;
+  const gm = GAMES[S.cfg.game] || GAMES.cs2;
+  const mode = {match:'匹配度测试', ab:'灵敏度对比 A/B', new:'新手找灵敏度'}[S.cfg.mode] || S.cfg.mode;
+  const mins = Math.max(1, Math.round((Date.now()-S.ts)/60000));
+  const ago = mins < 60 ? `${mins} 分钟前`
+            : mins < 1440 ? `${Math.round(mins/60)} 小时前`
+            : `${Math.round(mins/1440)} 天前`;
+  $('resumeInfo').innerHTML =
+    `<b>${gm.name} · ${mode}</b>，进行到第 <b>${S.phase+1} / ${S.nPhases}</b> 个阶段，`
+    + `已记录 <b>${(S.results||[]).length}</b> 条有效数据 · ${ago}中断。<br>`
+    + `<span style="color:var(--dim2)">继续会沿用当时那套配置（${gm.name}，DPI ${S.cfg.dpi}，灵敏度 ${S.cfg.sens}），`
+    + `期间改过的设置不会生效。中断间隔会记进结果 —— 隔得越久，前后两半越不像同一次测试。</span>`;
+}
+
+function resumeSession(){
+  const S = loadSession();
+  if (!S){ renderResume(); return; }
+  /* 配置整套还原。顺序很关键：**必须先 setGame 再覆盖 cfg**。
+     setGame 内部第一件事是 readCfg()，会把当前界面上的值读回 cfg ——
+     反过来写的话，DPI、画面比例、分辨率这些**两个游戏共用**的字段
+     会被界面上的现值冲掉（实测：存档 1600 DPI 被界面上的 400 覆盖）。
+     每游戏独立的 sens 还要额外写进 perGame 槽位，否则 setGame 会用旧槽位值覆盖。 */
+  const gid = S.cfg.game || 'cs2';
+  setGame(gid, {force:true});
+  cfg = Object.assign(cfg, S.cfg);
+  if (cfg.perGame && cfg.perGame[gid]){
+    const P = cfg.perGame[gid];
+    P.sens = S.cfg.sens; P.sensA = S.cfg.sensA; P.sensB = S.cfg.sensB;
+  }
+  writeCfg(cfg);
+  refreshReadout();
+  SWEEP_CANDS = S.cands || null;
+  Test.phases = activePhases();
+  // 阶段签名对不上就别硬续 —— 那会把两份不同结构的数据拼在一起
+  if (Test.phases.map(x=>x.id).join('|') !== S.sig){
+    alert('存档和当前版本的测试流程对不上，无法续测。请重新开始一次完整测试。');
+    clearSession(); renderResume(); return;
+  }
+  if (!(S.phase >= 0 && S.phase < Test.phases.length)){
+    alert('存档的阶段位置异常，无法续测。'); clearSession(); renderResume(); return;
+  }
+
+  Test.running = true; Test.paused = true; Test.state = 'run';
+  Test.phase = S.phase; Test.phaseTrials = S.phaseTrials || 0;
+  Test.results = S.results || [];
+  Test.activeSens = S.activeSens || cfg.sens;
+  Test.frameGaps = S.frameGaps || []; Test.inputAge = S.inputAge || [];
+  Test.yaw = 0; Test.pitch = 0;
+  Test.target = null; Test.targets = null; Test.trial = null;
+  Test.fb = null; Test.sprayMarks = null;
+  Test.pausedEl = S.pausedEl || 0; Test.pausedTrans = 0;
+  Test.resumes = (S.resumes || []).concat([{at:Date.now(), gapMs:Date.now()-S.ts}]);
+  LOCK_MODE = S.lockMode || 'unknown';
+  Input.reset();
+  Input.gaps = S.inputGaps || [];
+  if (typeof S.minGap === 'number') Input.minGap = S.minGap;
+
+  $('screenSetup').classList.add('hidden');
+  $('screenResult').classList.add('hidden');
+  $('screenTest').classList.remove('hidden');
+  $('trans').classList.add('hidden');
+  Scene.resize();
+  const t = performance.now();
+  Test.phaseT0 = t - Test.pausedEl; Test.lastFrame = t; Test.fbT = t;
+  requestAnimationFrame(Test.loop.bind(Test));
+  const gapMin = Math.round((Date.now()-S.ts)/60000);
+  Test.showPause('接着上次继续',
+    `从第 <b>${S.phase+1} / ${Test.phases.length}</b> 个阶段「${Test.phases[S.phase].name}」继续，`
+    + `已有 ${Test.results.length} 条数据。`
+    + (gapMin >= 30 ? `<br><span style="color:var(--warn)">距上次中断 ${gapMin>=1440?Math.round(gapMin/1440)+' 天':gapMin>=60?Math.round(gapMin/60)+' 小时':gapMin+' 分钟'}，手的状态可能已经变了，结果页会标注这一点。</span>` : ''));
+}
+
 /* ═══════════ 测试主循环 ═══════════ */
 const Test = {
   running:false, paused:false, state:'run', frameGaps:[], inputAge:[],
@@ -1818,7 +1943,7 @@ const Test = {
     this.yaw=0; this.pitch=0; this.phase=0; this.results=[];
     this.target=null; this.targets=null; this.trial=null; this.fb=null; this.phaseTrials=0;
     this.activeSens = this.phases[0].sens || cfg.sens;
-    this.frameGaps = []; this.inputAge = [];
+    this.frameGaps = []; this.inputAge = []; this.resumes = [];
     Input.reset();
     this.lastFrame = performance.now();
     this.enterTrans(performance.now(), '');
@@ -2360,27 +2485,52 @@ const Test = {
     this.pausedEl = performance.now() - this.phaseT0;   // 记住本阶段已用时长
     this.pausedTrans = this.state==='trans' ? Math.max(0, this.transUntil - performance.now()) : 0;
     this.trial=null; this.target=null; this.targets=null;
+    this.showPause('已暂停', '鼠标锁定已解除。点击下方按钮继续，计时会接着走。<br>也可以退出，进度会存下来，下次接着测。');
+  },
+  /** 暂停浮层。续测也走这里 —— 两边都是"停在某个阶段，等用户点继续"。 */
+  showPause(title, body){
     $('overlay').classList.remove('hidden');
-    $('ovTitle').textContent='已暂停';
-    $('ovBody').innerHTML='鼠标锁定已解除。点击下方按钮继续，计时会接着走。';
-    $('ovBtn').textContent='继续测试';
+    $('ovTitle').textContent = title;
+    $('ovBody').innerHTML = body;
+    $('ovBtn').textContent = '继续测试';
     $('ovBtn').onclick = async ()=>{
       const st = await requestLock($('cv'));
       if (st==='failed') return;
       $('overlay').classList.add('hidden');
+      $('ovBtn2').classList.add('hidden');
       this.paused=false;
       const t = performance.now();
       this.phaseT0 = t - this.pausedEl;                  // 接着走，不因暂停延长阶段
       if (this.state==='trans') this.transUntil = t + Math.max(1200, this.pausedTrans);
       this.fbT = t; this.lastFrame = t;
     };
+    const b2 = $('ovBtn2');
+    b2.classList.remove('hidden');
+    b2.textContent = '退出并保存进度';
+    b2.onclick = ()=>{
+      if (!saveSession()){ alert('进度保存失败（浏览器存储可能已满或被禁用）。'); return; }
+      this.running = false; this.paused = false;
+      if (document.pointerLockElement) document.exitPointerLock();
+      $('overlay').classList.add('hidden');
+      b2.classList.add('hidden');
+      $('screenTest').classList.add('hidden');
+      $('screenSetup').classList.remove('hidden');
+      renderResume(); renderHistory();
+      window.scrollTo(0,0);
+    };
   },
   finish(){
     this.running=false;
     if (document.pointerLockElement) document.exitPointerLock();
-    if (cfg.mode==='ab')       showABResults(buildABReport(this.results));
-    else if (cfg.mode==='new') showSweepResults(buildSweepReport(this.results, SWEEP_CANDS||newbieCandidates()));
-    else                       showResults(buildReport(this.results));
+    clearSession();                       // 测完了，存档没用了
+    const R = cfg.mode==='ab' ? buildABReport(this.results)
+            : cfg.mode==='new' ? buildSweepReport(this.results, SWEEP_CANDS||newbieCandidates())
+            : buildReport(this.results);
+    // 中断过就如实记进结果：隔了多久、隔了几次，让读的人自己判断可比性
+    if (this.resumes && this.resumes.length) R.resumes = this.resumes;
+    if (cfg.mode==='ab')       showABResults(R);
+    else if (cfg.mode==='new') showSweepResults(R);
+    else                       showResults(R);
   }
 };
 
@@ -3060,6 +3210,20 @@ function showResults(R){
   }).join('');
 
   const warns = [];
+  /* 中断续测过就必须说：这个测试依赖适应动力学，隔太久前后两半不是同一个手的状态。
+     不替用户下判断，只把间隔如实摆出来。 */
+  if (R.resumes && R.resumes.length){
+    const fmt = ms => ms>=86400000 ? Math.round(ms/86400000)+' 天'
+                    : ms>=3600000  ? Math.round(ms/3600000)+' 小时'
+                    : Math.max(1,Math.round(ms/60000))+' 分钟';
+    const gaps = R.resumes.map(x=>fmt(x.gapMs||0)).join('、');
+    const longGap = R.resumes.some(x=>(x.gapMs||0) >= 1800000);
+    warns.push(`<div class="note ${longGap?'w':''}"><b>这次测试中断过 ${R.resumes.length} 次</b>（间隔 ${gaps}）。`
+      + (longGap
+         ? `隔得比较久，前后两段是在不同的手的状态下打的 —— 这个测试依赖适应动力学，跨时段的数据可比性会下降。结论当参考，别当定论。`
+         : `间隔不长，影响有限。`)
+      + `<br><span style="color:var(--dim2)">另外性能遥测（帧率、输入滞留）只保留了中断前最后一段样本，续测后的统计以后半段为主。</span></div>`);
+  }
   if (R.verdict==='adapting' && R.habitSens)
     warns.push(`<div class="note w"><b>开头手速 ${R.paceEarly.toFixed(0)} cm/360，设置 ${R.cmNow.toFixed(0)} cm/360，差 ${(Math.max(R.paceEarly,R.cmNow)/Math.min(R.paceEarly,R.cmNow)).toFixed(2)} 倍。</b>
       <span style="color:var(--dim2)">这是下限，真实差距更大。</span></div>`);
@@ -3495,6 +3659,9 @@ function bindResultExport(R){
 let LOCK_MODE = 'unknown';
 
 async function beginTest(){
+  // 有存档时开新测试 = 丢弃存档，得先问一句，不能默默盖掉
+  if (loadSession() && !confirm('你有一次没测完的测试。开始新测试会丢弃它，确定吗？')) return;
+  clearSession(); renderResume();
   readCfg();
   try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){}
   $('screenSetup').classList.add('hidden');
@@ -3505,6 +3672,7 @@ async function beginTest(){
   $('overlay').classList.remove('hidden');
   $('ovTitle').textContent = '准备好了吗';
   $('ovBody').innerHTML = `点击下方按钮锁定鼠标并开始。<br>目标出现后尽快甩过去点击，用平时打${G.short}的姿势。<br>随时按 <span class="kb">Esc</span> 暂停。`;
+  $('ovBtn2').classList.add('hidden');
   $('ovBtn').textContent = '锁定鼠标，开始';
   $('ovBtn').onclick = async ()=>{
     LOCK_MODE = await requestLock($('cv'));
@@ -3639,6 +3807,12 @@ document.addEventListener('pointerlockchange', ()=>{
     copy(G.xh.conVars(xhFromUI()), $('btnXhCvar'), '控制台命令已复制，粘进 CS2 控制台即可');
   };
 
+  $('btnResume').onclick = resumeSession;
+  $('btnDropResume').onclick = ()=>{
+    if (!confirm('丢弃这次未完成的测试进度？不可恢复。')) return;
+    clearSession(); renderResume();
+  };
+  renderResume();
   $('btnStart').onclick = beginTest;
   setGame(cfg.game || 'cs2', {force:true});   // 必须在读完存档之后，负责铺开界面和标签
   probeLock();
