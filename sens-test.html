@@ -421,6 +421,11 @@ table.dt td .sm{font-size:11.5px;color:var(--dim2);font-weight:400;font-family:i
           <span class="hint">默认 1.4° ≈ 10 米处的身体宽度</span>
         </div>
         <div class="f">
+          <label>后坐力强度 (°)</label>
+          <input type="number" id="iSprayRise" value="22" min="6" max="40" step="1">
+          <span class="hint" id="hintSpray">压枪测试一梭子的累计抬升。对着游戏调到手感一致</span>
+        </div>
+        <div class="f">
           <label>模拟回报率上限 (Hz)</label>
           <select id="iSim">
             <option value="0" selected>不限制（用硬件原始值）</option>
@@ -556,8 +561,12 @@ const SPRAY_SHOTS = 30;   // 一个弹匣
    区分不出灵敏度。改完后同样设置要走 2.6 cm，才是个真的持续动作。
    这仍然是**约数**，不声称等于 AK 实测值。界面上会把"本次要下拉几厘米"直接算给玩家看，
    觉得和游戏里手感对不上，改这两个常数即可整体缩放。 */
-const SPRAY_RISE = 22;    // 累计纵向抬升（度）
-const SPRAY_SWAY = 8;     // 之后的横向摆幅（度）
+/* 默认 22°，但做成界面可调 —— 我拿不到 AK 的实测角度值，与其我猜一个，
+   不如让玩家对着游戏调到手感一致，再把那个数报回来。
+   横向摆幅按同比例跟着缩放，形状不变。 */
+const SPRAY_RISE_DEF = 22;
+const SPRAY_SWAY_RATIO = 8/22;
+const sprayRise = () => cfg.sprayRise || SPRAY_RISE_DEF;
 const SPRAY_TAU  = 3.5;   // 抬升曲线的时间常数，单位「发」。峰值速率出现在第 τ 发
 const POST_CLICK_MS = 180;        // 点击后继续采样的时长，保证弹道终点被观测到
 
@@ -704,7 +713,7 @@ let cfg = {
   game:'cs2',
   who:'', mode:'match', grip:'hybrid', candMode:'auto', candList:'',
   dpi:1600, poll:1000, aspect:1.77778,
-  stretch:false, display:1.77778, tgt:1.4, sim:0, resY:1080,
+  stretch:false, display:1.77778, tgt:1.4, sim:0, resY:1080, sprayRise:22,
   sens:0.6, sensA:0.6, sensB:0.8,
   // 每游戏一份的灵敏度与准星（xhFull 保留代码里不参与渲染的字段，保证往返一致）
   perGame:{
@@ -734,6 +743,7 @@ function readCfg(){
   cfg.display = +$('iDisplay').value || 1.77778;
   cfg.tgt     = +$('iTgt').value || 1.4;
   cfg.sim     = +$('iSim').value;
+  cfg.sprayRise = +$('iSprayRise').value || SPRAY_RISE_DEF;
   cfg.resY    = +$('iResY').value || 1080;
   for (const k of xhKeys()){
     const el = $(k); if (!el) continue;
@@ -757,6 +767,7 @@ function writeCfg(c){
   $('iAspect').value=c.aspect; $('iStretch').value = c.stretch ? '1' : '0';
   if (c.display) $('iDisplay').value = c.display;
   $('iTgt').value=c.tgt; $('iSim').value=c.sim;
+  if (c.sprayRise) $('iSprayRise').value = c.sprayRise;
   $('iResY').value=c.resY;
   for (const k of xhKeys()){
     const el = $(k); if (!el || c[k]===undefined) continue;
@@ -849,7 +860,9 @@ function refreshReadout(){
     $('hintDisplay').textContent = c.stretch
       ? `拉伸铺满时横向倍率只由显示器比例决定：${(c.display/G.baseA).toFixed(3)}×`
       : '黑边模式下这一项不影响画面';
-    $('hintFov').innerHTML = `无畏契约的 FOV <b>不随画面比例变化</b>（这点和 CS 相反）：始终是 103°×70.5°，换比例只是把同一幅画面压扁或拉开。所以这里的 4:3 <b>不会</b>像 CS 那样牺牲视野换模型变大 —— 拉伸铺满等于白拉，黑边反而把模型压细。`;
+    if (G.id==='cs2') $('hintSpray').textContent =
+    `压枪一梭子的累计抬升。按当前设置手要下拉 ${(c.sprayRise/360*cm).toFixed(1)} cm，对着游戏调到手感一致`;
+  $('hintFov').innerHTML = `无畏契约的 FOV <b>不随画面比例变化</b>（这点和 CS 相反）：始终是 103°×70.5°，换比例只是把同一幅画面压扁或拉开。所以这里的 4:3 <b>不会</b>像 CS 那样牺牲视野换模型变大 —— 拉伸铺满等于白拉，黑边反而把模型压细。`;
   }
 
   const half = cm/2;
@@ -945,7 +958,8 @@ const PHASES = [
   {id:'spray',  name:'压枪测试', tip:'按住左键，把准星压住不动', kind:'spray', keep:true, tgt:0.9,
    runMs:3000, games:['cs2'], short:'持续后坐力 · 30 发/段 · 测 RMS 偏离',
    desc:()=>`按住<b>左键不放</b>开火，视角会被后坐力持续往上推，你要用鼠标把它压回来、让准星一直待在靶上。<br>`
-       +`按你现在的设置，这一梭子需要向下拉约 <b>${(SPRAY_RISE/360*cm360(cfg.dpi,cfg.sens)).toFixed(1)} cm</b>。<br>`
+       +`按你现在的设置，这一梭子需要向下拉约 <b>${(sprayRise()/360*cm360(cfg.dpi,cfg.sens)).toFixed(1)} cm</b>。`
+       +`觉得和游戏里对不上，在「高级设置 → 后坐力强度」里调。<br>`
        +`每一发都会在墙上留下弹孔、连成弹道，打完一梭留在屏幕上给你看。<b>准星始终在正中不动</b>，`
        +`会动的是视角——和游戏里 <code>cl_crosshair_recoil 0</code> 一样。<br>`
        +`纵向抬升<b>固定</b>（这才是要测的持续下拉能力），横向摆动<b>每段随机</b>——背不住，只能看着补。<br>`
@@ -1230,7 +1244,7 @@ function probeLock(){
 
 /* ═══════════ 场景渲染 ═══════════ */
 const Scene = {
-  cv:null, ctx:null, W:0, H:0, dpr:1, seg:[], proj:{},
+  cv:null, ctx:null, W:0, H:0, dpr:1, seg:[], dots:[], proj:{},
   init(){
     this.cv = $('cv'); this.ctx = this.cv.getContext('2d', {alpha:false});
     this.buildRoom(); this.resize();
@@ -1250,6 +1264,30 @@ const Scene = {
       for(let y=FL;y<=CE;y+=1)  S.push([[x,y,-Z],[x,y,Z]]);
     }
     this.seg = S;
+
+    /* 密集参照点。为什么需要：网格间距 1.5、墙在 9 米外，准星周围那一格
+       张角有 9.5° —— 整梭子 climb 22° 也只跨两格，中心区域几乎没有细节在动。
+       视觉系统找不到"世界在动"的证据，就把运动归因到唯一看得见的东西：准星。
+       测试者反馈"像准星在抖"就是这么来的（"不跟手"那条大概率也是同一个根因）。
+       游戏里满屏贴图 + 枪模 + 枪口火光，从来不会有这个歧义。
+       用伪随机散点而不是加密网格：等距细线会摩尔纹、会闪，散点像贴图颗粒，
+       给的是纯粹的光流信号。种子固定，每次打开位置一样，不构成额外变量。 */
+    const D = [];
+    let sd = 20260909;
+    const rnd = ()=>{ sd = (sd*1664525 + 1013904223) >>> 0; return sd/4294967296; };
+    const put = (n, f)=>{ for(let i=0;i<n;i++) D.push(f()); };
+    const lerp = (a,b,t)=>a+(b-a)*t;
+    /* 密度按"中央凹要多密才够"定：视觉系统在 1–2° 尺度上取光流。
+       前墙在 9 米外、横跨约 90°×25°，要做到 1.5° 间距需要约 1000 点。
+       稀了就退化成原来那个问题 —— 实测 340 点时准星 5° 内只有 9 个、间距 3.3°，
+       还够不上"贴图颗粒"。 */
+    for (const z of [-Z, Z])                       // 前后墙：正对视线，参照最关键
+      put(950, ()=>[lerp(-X,X,rnd()), lerp(FL,CE,rnd()), z]);
+    for (const x of [-X, X])
+      put(420, ()=>[x, lerp(FL,CE,rnd()), lerp(-Z,Z,rnd())]);
+    put(560, ()=>[lerp(-X,X,rnd()), FL, lerp(-Z,Z,rnd())]);   // 地面
+    put(280, ()=>[lerp(-X,X,rnd()), CE, lerp(-Z,Z,rnd())]);   // 天花板
+    this.dots = D;
   },
   resize(){
     this.dpr = Math.min(window.devicePixelRatio||1, 2);
@@ -1301,6 +1339,24 @@ const Scene = {
       g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]);
     }
     g.stroke();
+
+    /* 参照散点。三千个点逐个 fillRect 比投影本身还贵，按大小分三档、
+       每档攒成一条 path 填一次 —— 三次 fill 代替三千次。 */
+    const bins = [[],[],[]];
+    for (const d of this.dots){
+      const q = this.project(d, B);
+      if (!q || q[0]<vx || q[0]>vx+P.vpW || q[1]<vy || q[1]>vy+P.vpH) continue;
+      bins[q[2] < 6 ? 0 : q[2] < 11 ? 1 : 2].push(q);
+    }
+    const sizes = [2.2, 1.5, 1.1], tints = ['#46566a','#3a4859','#2f3b49'];
+    bins.forEach((bin,i)=>{
+      if (!bin.length) return;
+      const r = sizes[i];
+      g.fillStyle = tints[i];
+      g.beginPath();
+      for (const q of bin) g.rect(q[0]-r/2, q[1]-r/2, r, r);
+      g.fill();
+    });
 
     // 目标（拉伸模式下横向变宽 —— 和游戏里一致）。targetIn 可以是单个或数组（波次）
     for (const target of (Array.isArray(targetIn) ? targetIn : (targetIn ? [targetIn] : []))){
@@ -1364,6 +1420,21 @@ const Scene = {
     g.fillStyle='rgba(240,136,62,.9)';
     g.beginPath(); g.moveTo(16,0); g.lineTo(-10,9); g.lineTo(-10,-9); g.closePath(); g.fill();
     g.restore();
+  },
+  /* 枪口火光。没有枪模的情况下，它是把"画面在动"归因到"枪在响"的最便宜的线索 ——
+     少了它，同样的位移只会被读成屏幕不稳。位置放视口底部偏右，就是枪口该在的地方。 */
+  muzzle(age){
+    if (age > 55) return;
+    const g = this.ctx, P = this.proj;
+    const a = (1 - age/55) * 0.9;
+    const x = this.W/2 + P.vpW*0.14, y = this.H/2 + P.vpH*0.5;
+    const r = P.vpH*0.13;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    grd.addColorStop(0,   `rgba(255,226,150,${(0.55*a).toFixed(3)})`);
+    grd.addColorStop(0.35,`rgba(255,168,60,${(0.24*a).toFixed(3)})`);
+    grd.addColorStop(1,   'rgba(255,150,40,0)');
+    g.fillStyle = grd;
+    g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
   },
   crosshair(fb){ drawCrosshair(this.ctx, this.W/2, this.H/2, this.H/cfg.resY, fb); }
 };
@@ -2067,12 +2138,13 @@ const Test = {
        实机也不是这样：CS 里第一发是准的，后坐力是打出去之后才累积起来的。
        换曲线后首帧只抬 0.006°（原来的 1.4%），峰值降到 23°/s 且出现在第 3.5 发，
        第 1 发累计 0.74° 仍在靶半径 0.9° 以内 —— 首发照样命中。总抬升 22° 不变。 */
+    const RISE = sprayRise();
     const x = n / SPRAY_TAU;
-    const rise = SPRAY_RISE * (1 - (1 + x)*Math.exp(-x));
+    const rise = RISE * (1 - (1 + x)*Math.exp(-x));
     const k = Math.max(0, n - 4);
     // 横向也要淡入：直接从第 4 发开始摆会在那里出现一个斜率折角，同样是一下顿挫
     const ramp = Math.min(1, k/4);
-    const sway = sd.d * SPRAY_SWAY * ramp *
+    const sway = sd.d * (RISE*SPRAY_SWAY_RATIO) * ramp *
       (0.6*Math.sin(0.40*k*(1+0.3*sd.r1)) + 0.4*Math.sin(0.23*k*(1+0.4*sd.r2)));
     return [sway*D2R, rise*D2R];
   },
@@ -2130,7 +2202,7 @@ const Test = {
     }
     if (P.kind==='spray'){
       const B = camBasis(this.yaw, this.pitch);
-      this.sprayMarks = null;
+      this.sprayMarks = null; this.muzzleT = 0;
       this.trial = {kind:'spray', ph:0, t0:performance.now(), firing:false, fireT:0, marks:[],
                     seed:{d:Math.random()<0.5?1:-1, r1:Math.random(), r2:Math.random()},
                     lastAz:0, lastEl:0, lastShot:0, shots:0, hitShots:0,
@@ -2355,6 +2427,7 @@ const Test = {
                   必须按阶段判断：别的阶段 trial.marks 是 undefined，会退到残留的
                   sprayMarks，弹孔就渗到转身测试里去了。 */
                PH.kind==='spray' ? ((this.trial && this.trial.marks) || this.sprayMarks) : null);
+    if (PH.kind==='spray' && this.muzzleT) Scene.muzzle(now - this.muzzleT);
     this.hud(now);
     this.lastFrame = now;
   },
@@ -2418,6 +2491,7 @@ const Test = {
       if (ang < this.target.rad) T.hitShots++;
       // 子弹去的就是准星指向：游戏里视角被顶上去、子弹跟着视角走
       T.marks.push(dirFromAngles(this.yaw, this.pitch));
+      this.muzzleT = now;
     }
     this.fb = ang < this.target.rad ? 'hit' : null;
     if (n >= SPRAY_SHOTS) this.endSpray();
@@ -3710,7 +3784,7 @@ document.addEventListener('pointerlockchange', ()=>{
   ['iDpi','iSens','iPoll','iAspect','iStretch','iDisplay','iTgt','iSim','iResY','iSensA','iSensB',
    'iGrip','iCandMode','oCand', 'xCol','xDot',
    'xSize','xThick','xGap','xOut','xAlpha','xT',
-   'xInL','xInT','xInO','xInA','xOutB','xOutL','xOutT','xOutO','xOutA','xStroke','xDotT']
+   'xInL','xInT','xInO','xInA','xOutB','xOutL','xOutT','xOutO','xOutA','xStroke','xDotT','iSprayRise']
     .forEach(id => { const el = $(id); if (el) el.addEventListener('input', refreshReadout); });
   document.querySelectorAll('input[name=mode]').forEach(r=>r.addEventListener('change', refreshReadout));
   document.querySelectorAll('input[name=game]').forEach(r=>r.addEventListener('change', ()=>setGame(r.value)));
