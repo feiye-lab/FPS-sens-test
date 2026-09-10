@@ -422,7 +422,7 @@ table.dt td .sm{font-size:11.5px;color:var(--dim2);font-weight:400;font-family:i
         </div>
         <div class="f">
           <label>后坐力强度 (°)</label>
-          <input type="number" id="iSprayRise" value="22" min="6" max="40" step="1">
+          <input type="number" id="iSprayRise" value="11" min="4" max="30" step="1">
           <span class="hint" id="hintSpray">压枪测试一梭子的累计抬升。对着游戏调到手感一致</span>
           <button class="cpy" id="btnSprayTry" style="margin-top:6px">试打（不计分）</button>
         </div>
@@ -554,19 +554,25 @@ table.dt td .sm{font-size:11.5px;color:var(--dim2);font-weight:400;font-family:i
 const D2R = Math.PI/180, R2D = 180/Math.PI;
 const SPRAY_RPM  = 600;   // AK-47 射速，600 发/分 = 每 100ms 一发
 const SPRAY_SHOTS = 30;   // 一个弹匣
-/* 量级怎么定的（说清楚，免得看着像随手写的）：
-   网上找不到 AK 弹道的可信角度数值，社区资料全是定性描述，所以**不按角度反推**，
-   改从玩家能验证的那一端定：CS 玩家普遍反映压一梭 AK 大概要下拉三四厘米，
-   而典型灵敏度在 50 cm/360 上下 → 3.5/50×360 ≈ 25°。取 22° 落在这个区间偏保守的一侧。
-   先前用 12° 是错的：在 43 cm/360 上只需下拉 1.4 cm，三秒钟走这么点距离根本不吃力，
-   区分不出灵敏度。改完后同样设置要走 2.6 cm，才是个真的持续动作。
-   这仍然是**约数**，不声称等于 AK 实测值。界面上会把"本次要下拉几厘米"直接算给玩家看，
-   觉得和游戏里手感对不上，改这两个常数即可整体缩放。 */
-/* 默认 22°，但做成界面可调 —— 我拿不到 AK 的实测角度值，与其我猜一个，
-   不如让玩家对着游戏调到手感一致，再把那个数报回来。
-   横向摆幅按同比例跟着缩放，形状不变。 */
-const SPRAY_RISE_DEF = 22;
-const SPRAY_SWAY_RATIO = 8/22;
+/* 量级现在是**实测值**，不再是估算。
+   来源：Steam 指南「Spray/Recoil patterns in CS2」(id=3150629609) 逐枪量出的弹道包围盒，
+   CS2 的 AK-47 = 高 11.06°、宽 7.14°、面积 78.93°²（11.06×7.14=78.97，自洽）。
+   同表的 M4A4 9.06°/6.29°、M4A1-S 5.93°/4.62°，枪与枪的相对关系也和公认手感一致。
+
+   物理自检（这一步才是真正让我敢用这个数的理由）：
+   11.06° 在 43 cm/360 上 = 11.06/360×43 ≈ 1.3 cm。一梭 AK 下拉一厘米出头 ——
+   和 CS 玩家的实际动作幅度对得上，压枪本来就是个小幅度的腕动作。
+
+   之前的 22° 是**错的，整整大了一倍**，来路是"下拉三四厘米 ÷ 50 cm/360"这个反推，
+   而那个"三四厘米"是我采信的传闻，本身就偏大。测试者两次反馈"抖得比实际大"，
+   两次都是对的；我第一次只改了曲线形状没改量级，第二次才查到硬数字。
+   教训：宁可查不到就标成未验证，也别用传闻反推出一个看着精确的数。
+
+   横向：本模型的摆动波形实际峰谷跨度 ≈ 1.615 × 振幅系数（两条正弦叠加，两万次抽样的中位数），
+   所以要让总宽度落在 7.1°，振幅系数取 7.1/1.615 ≈ 4.4°。比值写成除法，改高度时宽度自动跟着走。 */
+const SPRAY_RISE_DEF  = 11;    // CS2 AK-47 实测抬升 11.06°
+const SPRAY_WIDTH_DEF = 7.1;   // CS2 AK-47 实测横向 7.14°
+const SPRAY_SWAY_RATIO = (SPRAY_WIDTH_DEF/1.615) / SPRAY_RISE_DEF;
 const sprayRise = () => cfg.sprayRise || SPRAY_RISE_DEF;
 const SPRAY_TAU  = 3.5;   // 抬升曲线的时间常数，单位「发」。峰值速率出现在第 τ 发
 const POST_CLICK_MS = 180;        // 点击后继续采样的时长，保证弹道终点被观测到
@@ -714,7 +720,7 @@ let cfg = {
   game:'cs2',
   who:'', mode:'match', grip:'hybrid', candMode:'auto', candList:'',
   dpi:1600, poll:1000, aspect:1.77778,
-  stretch:false, display:1.77778, tgt:1.4, sim:0, resY:1080, sprayRise:22,
+  stretch:false, display:1.77778, tgt:1.4, sim:0, resY:1080, sprayRise:11,
   sens:0.6, sensA:0.6, sensB:0.8,
   // 每游戏一份的灵敏度与准星（xhFull 保留代码里不参与渲染的字段，保证往返一致）
   perGame:{
@@ -861,10 +867,13 @@ function refreshReadout(){
     $('hintDisplay').textContent = c.stretch
       ? `拉伸铺满时横向倍率只由显示器比例决定：${(c.display/G.baseA).toFixed(3)}×`
       : '黑边模式下这一项不影响画面';
-    if (G.id==='cs2') $('hintSpray').textContent =
-    `压枪一梭子的累计抬升。按当前设置手要下拉 ${(c.sprayRise/360*cm).toFixed(1)} cm，对着游戏调到手感一致`;
-  $('hintFov').innerHTML = `无畏契约的 FOV <b>不随画面比例变化</b>（这点和 CS 相反）：始终是 103°×70.5°，换比例只是把同一幅画面压扁或拉开。所以这里的 4:3 <b>不会</b>像 CS 那样牺牲视野换模型变大 —— 拉伸铺满等于白拉，黑边反而把模型压细。`;
+    $('hintFov').innerHTML = `无畏契约的 FOV <b>不随画面比例变化</b>（这点和 CS 相反）：始终是 103°×70.5°，换比例只是把同一幅画面压扁或拉开。所以这里的 4:3 <b>不会</b>像 CS 那样牺牲视野换模型变大 —— 拉伸铺满等于白拉，黑边反而把模型压细。`;
   }
+
+  /* 压枪是 CS2 独有的，这条提示原先被写进了无畏契约那个分支里、条件恒为假，
+     所以从来没生效过（玩家一直看到的是 HTML 里的静态占位文案）。挪到分支外面。 */
+  if (G.id==='cs2') $('hintSpray').textContent =
+    `压枪一梭子的累计抬升。默认 11° 是 CS2 的 AK-47 实测弹道，按当前设置手要下拉 ${(c.sprayRise/360*cm).toFixed(1)} cm`;
 
   const half = cm/2;
   let s = `进游戏贴墙转半圈（180°），鼠标横向移动应约 <b>${half.toFixed(1)} cm</b>；对不上说明 DPI 或灵敏度填错了。`;
@@ -960,7 +969,8 @@ const PHASES = [
    runMs:3000, games:['cs2'], short:'持续后坐力 · 30 发/段 · 测 RMS 偏离',
    desc:()=>`按住<b>左键不放</b>开火，视角会被后坐力持续往上推，你要用鼠标把它压回来、让准星一直待在靶上。<br>`
        +`按你现在的设置，这一梭子需要向下拉约 <b>${(sprayRise()/360*cm360(cfg.dpi,cfg.sens)).toFixed(1)} cm</b>。`
-       +`觉得和游戏里对不上，在「高级设置 → 后坐力强度」里调。<br>`
+       +`后坐力强度默认取 CS2 的 AK-47 实测弹道（高 11°、宽 7.1°）；`
+       +`要改在「高级设置 → 后坐力强度」，旁边有试打场可以直接感受。<br>`
        +`每一发都会在墙上留下弹孔、连成弹道，打完一梭留在屏幕上给你看。<b>准星始终在正中不动</b>，`
        +`会动的是视角——和游戏里 <code>cl_crosshair_recoil 0</code> 一样。<br>`
        +`纵向抬升<b>固定</b>（这才是要测的持续下拉能力），横向摆动<b>每段随机</b>——背不住，只能看着补。<br>`
@@ -2127,8 +2137,9 @@ const Test = {
               而且 A/B 两边必须完全一致，比较才成立。背下"匀速往下拉"不算作弊，那就是被测的技能。
        横向 = 每段随机频率 + 随机左右。背不住，只能靠看着补，测的是闭环修正。
      形状按社区公认的定性描述（前 4–5 发几乎直上，之后向左弧、转横向摆动）。
-     量级是**约数**，不声称等于 AK 实测值 —— 网上找不到可信的角度数值，
-     我不编一个假装精确的数。改这三个常数即可整体缩放。 */
+     **量级是实测的**：高 11°、宽 7.1°，取自 CS2 的 AK-47 弹道包围盒（出处见 SPRAY_RISE_DEF）。
+     所以现在的关系是：包围盒尺寸 = 真的，盒子里的走法 = 有意做成背不住的。
+     测的是"能不能执行一段真实幅度的持续下拉"，不是"记不记得住 AK 的那条线"。 */
   /** 微控靶的漂移轨迹：峰值角速度约 2°/s，是跟枪的 1/16。
       幅度足够大（±5°），松手后靶会走掉，脱手刷分行不通。 */
   /** 累计后坐力偏移，n = 已射出弹数（可为小数）。返回 [方位, 仰角]，弧度。 */
@@ -2138,8 +2149,11 @@ const Test = {
        原来用的是 1-e^(-x)，那条曲线的最大斜率恰好在 n=0 —— 一扣扳机就是最猛的一下
        （开火首帧就抬 0.42°、瞬时 52°/s），玩家反馈"抖得太厉害"就是这个。
        实机也不是这样：CS 里第一发是准的，后坐力是打出去之后才累积起来的。
-       换曲线后首帧只抬 0.006°（原来的 1.4%），峰值降到 23°/s 且出现在第 3.5 发，
-       第 1 发累计 0.74° 仍在靶半径 0.9° 以内 —— 首发照样命中。总抬升 22° 不变。 */
+       换曲线后首帧只抬 0.003°，峰值 11.6°/s 且出现在第 3.5 发，
+       第 1 发累计 0.37° 仍在靶半径 0.9° 以内 —— 首发照样命中。
+       τ=3.5 同时也对上了实机的时间分布：第 10 发累计到总抬升的 78%，
+       剩下 20 发慢慢补完最后那两成 —— 正是 AK 弹道"前十发直上、之后转横向且略微继续爬"的形状。
+       这一版只动了量级，曲线和 τ 一个都没碰，免得两个变量一起变说不清是哪个起的作用。 */
     const RISE = sprayRise();
     const x = n / SPRAY_TAU;
     const rise = RISE * (1 - (1 + x)*Math.exp(-x));
@@ -3805,7 +3819,7 @@ function exitSprayLab(){
 /** 试打场里改强度：立刻生效，下一梭就是新手感 */
 function labAdjust(delta){
   if (!Test.lab) return;
-  cfg.sprayRise = clamp(Math.round((cfg.sprayRise||SPRAY_RISE_DEF) + delta), 6, 40);
+  cfg.sprayRise = clamp(Math.round((cfg.sprayRise||SPRAY_RISE_DEF) + delta), 4, 30);
   $('iSprayRise').value = cfg.sprayRise;
 }
 
@@ -3870,7 +3884,15 @@ window.addEventListener('keydown', e=>{
   }catch(e){}
   try{
     const s = localStorage.getItem(CFG_KEY);
-    if (s) { cfg = Object.assign(cfg, JSON.parse(s)); writeCfg(cfg); }
+    if (s) {
+      cfg = Object.assign(cfg, JSON.parse(s));
+      /* 一次性迁移：22° 是旧默认值，而它比 AK 实测弹道整整大一倍。
+         没人是主动选的这个数，所以把"恰好等于旧默认"的存档改成实测值；
+         迁移后打上标记，之后玩家自己调回 22 就不会再被动过。 */
+      if (cfg.sprayRise === 22 && !cfg.sprayCal) cfg.sprayRise = SPRAY_RISE_DEF;
+      cfg.sprayCal = 1;
+      writeCfg(cfg);
+    }
   }catch(e){}
   // 两个游戏的准星字段全挂上；当前隐藏的那一组不会触发，挂着也无害
   ['iDpi','iSens','iPoll','iAspect','iStretch','iDisplay','iTgt','iSim','iResY','iSensA','iSensB',
