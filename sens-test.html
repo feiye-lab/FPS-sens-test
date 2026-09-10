@@ -424,6 +424,7 @@ table.dt td .sm{font-size:11.5px;color:var(--dim2);font-weight:400;font-family:i
           <label>后坐力强度 (°)</label>
           <input type="number" id="iSprayRise" value="22" min="6" max="40" step="1">
           <span class="hint" id="hintSpray">压枪测试一梭子的累计抬升。对着游戏调到手感一致</span>
+          <button class="cpy" id="btnSprayTry" style="margin-top:6px">试打（不计分）</button>
         </div>
         <div class="f">
           <label>模拟回报率上限 (Hz)</label>
@@ -2099,6 +2100,7 @@ const Test = {
   },
   /** 停止条件：按有效试次数或置信区间宽度，不按时间。maxMs 只是安全网。 */
   phaseDone(now){
+    if (this.lab) return false;          // 试打场没有"打完"这回事，Esc 退出
     const P = this.phases[this.phase], s = P.stop;
     if (now - this.phaseT0 >= s.maxMs) return true;
     if (s.trials) return this.phaseTrials >= s.trials;
@@ -2319,6 +2321,8 @@ const Test = {
   record(rec){
     const P = this.curPhase();
     this.phaseTrials++;
+    // 试打场只拿来看手感，数据不进结果，但留最后一梭给 HUD 显示
+    if (this.lab){ this.labLast = rec; return; }
     if (P.keep) this.results.push(Object.assign(rec,{
       phase:P.id, ab:P.ab, settle: this.phaseTrials <= (P.settle||0)
     }));
@@ -2513,6 +2517,18 @@ const Test = {
   },
   hud(now){
     const P = this.curPhase(), s = P.stop;
+    if (this.lab){
+      const cm = sprayRise()/360*cm360(cfg.dpi, cfg.sens);
+      const L = this.labLast;
+      $('hudPhase').textContent = `试打场 · 强度 ${sprayRise()}°`;
+      $('hudTip').textContent   = '按住左键开火 · 滚轮或 ↑↓ 调强度 · Esc 退出';
+      $('bar').style.width = '0%';
+      $('hudR').innerHTML =
+        `手要下拉 <b>${cm.toFixed(1)} cm</b><br>`
+        + (L ? `上一梭 RMS ${L.rms.toFixed(2)}° · 命中 ${Math.round(L.hitRate*100)}%`
+             : '打一梭看看');
+      return;
+    }
     $('hudPhase').textContent = `${this.phase+1}/${this.phases.length}  ${P.name}`;
     $('hudTip').textContent   = P.tip;
     let prog, right;
@@ -3729,6 +3745,70 @@ function bindResultExport(R){
   };
 }
 
+/* ═══════════ 压枪试打场 ═══════════
+   为什么要有它：后坐力强度是个"调完不打一遍就不知道什么样"的参数，
+   而压枪排在第 7 个阶段 —— 想感受一下就得先跑完热身、甩枪、跟枪、微控、
+   修正、波次六个阶段。这个循环成本高到没人会去调，滑杆等于白给。
+   试打场直接进压枪、不计分、不推进阶段、Esc 退出，
+   而且**强度可以在场内用滚轮直接改**，不用退出去改了再进来。 */
+function enterSprayLab(){
+  readCfg();
+  Test.lab = true; Test.labLast = null;
+  Test.phases = [{id:'spray', name:'压枪试打', tip:'', kind:'spray', keep:false,
+                  tgt:0.9, runMs:3000, stop:{trials:1e9, maxMs:1e9}}];
+  Test.phase = 0; Test.phaseTrials = 0; Test.results = [];
+  Test.activeSens = cfg.sens;
+  Test.yaw = 0; Test.pitch = 0;
+  Test.target = null; Test.targets = null; Test.trial = null;
+  Test.fb = null; Test.sprayMarks = null; Test.muzzleT = 0;
+  Test.frameGaps = []; Test.inputAge = []; Test.resumes = [];
+  Input.reset();
+
+  $('screenSetup').classList.add('hidden');
+  $('screenResult').classList.add('hidden');
+  $('screenTest').classList.remove('hidden');
+  $('trans').classList.add('hidden');
+  Scene.resize();
+
+  $('overlay').classList.remove('hidden');
+  $('ovBtn2').classList.add('hidden');
+  $('ovTitle').textContent = '压枪试打场';
+  $('ovBody').innerHTML =
+    `按住<b>左键</b>开火，把准星压住别让它跑。<br>`
+    + `场内可以直接用<b>滚轮</b>或 <span class="kb">↑</span><span class="kb">↓</span> 改后坐力强度，不用退出去调。<br>`
+    + `不计分、不限次数，随时按 <span class="kb">Esc</span> 退出。`;
+  $('ovBtn').textContent = '锁定鼠标，开始试打';
+  $('ovBtn').onclick = async ()=>{
+    LOCK_MODE = await requestLock($('cv'));
+    if (LOCK_MODE==='failed'){
+      $('ovTitle').textContent = '鼠标锁定失败';
+      $('ovBody').innerHTML = lockHint();
+      $('ovBtn').textContent = '重试';
+      return;
+    }
+    $('overlay').classList.add('hidden');
+    Test.running = true; Test.paused = false; Test.state = 'run';
+    const t = performance.now();
+    Test.phaseT0 = t; Test.lastFrame = t; Test.fbT = t;
+    requestAnimationFrame(Test.loop.bind(Test));
+  };
+}
+function exitSprayLab(){
+  Test.running = false; Test.lab = false;
+  if (document.pointerLockElement) document.exitPointerLock();
+  $('overlay').classList.add('hidden');
+  $('screenTest').classList.add('hidden');
+  $('screenSetup').classList.remove('hidden');
+  writeCfg(cfg); refreshReadout();
+  window.scrollTo(0, $('iSprayRise').getBoundingClientRect().top + window.scrollY - 160);
+}
+/** 试打场里改强度：立刻生效，下一梭就是新手感 */
+function labAdjust(delta){
+  if (!Test.lab) return;
+  cfg.sprayRise = clamp(Math.round((cfg.sprayRise||SPRAY_RISE_DEF) + delta), 6, 40);
+  $('iSprayRise').value = cfg.sprayRise;
+}
+
 /* ═══════════ 启动流程 ═══════════ */
 let LOCK_MODE = 'unknown';
 
@@ -3764,7 +3844,19 @@ async function beginTest(){
 }
 
 document.addEventListener('pointerlockchange', ()=>{
-  if (!document.pointerLockElement && Test.running && !Test.paused) Test.pause();
+  if (document.pointerLockElement || !Test.running || Test.paused) return;
+  if (Test.lab) exitSprayLab();          // 试打场没有进度可保，直接退
+  else Test.pause();
+});
+// 试打场内调强度：滚轮和上下键都行，指针锁定状态下这两个都还能收到
+window.addEventListener('wheel', e=>{
+  if (!Test.lab || !Test.running) return;
+  e.preventDefault(); labAdjust(e.deltaY < 0 ? 1 : -1);
+}, {passive:false});
+window.addEventListener('keydown', e=>{
+  if (!Test.lab || !Test.running) return;
+  if (e.key==='ArrowUp')   { e.preventDefault(); labAdjust(1); }
+  if (e.key==='ArrowDown') { e.preventDefault(); labAdjust(-1); }
 });
 
 (function init(){
@@ -3881,6 +3973,7 @@ document.addEventListener('pointerlockchange', ()=>{
     copy(G.xh.conVars(xhFromUI()), $('btnXhCvar'), '控制台命令已复制，粘进 CS2 控制台即可');
   };
 
+  $('btnSprayTry').onclick = enterSprayLab;
   $('btnResume').onclick = resumeSession;
   $('btnDropResume').onclick = ()=>{
     if (!confirm('丢弃这次未完成的测试进度？不可恢复。')) return;
